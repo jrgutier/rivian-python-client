@@ -14,6 +14,11 @@ from warnings import warn
 
 import aiohttp
 from aiohttp import ClientResponse, ClientWebSocketResponse
+from gql import Client
+from gql.dsl import DSLMutation, DSLSchema, dsl_gql, DSLInlineFragment
+from gql.transport.aiohttp import AIOHTTPTransport
+from gql.transport.exceptions import TransportQueryError
+from graphql import build_schema
 
 from .const import (
     LIVE_SESSION_PROPERTIES,
@@ -22,6 +27,7 @@ from .const import (
     VEHICLE_STATES_SUBSCRIPTION_PROPERTIES,
     VehicleCommand,
 )
+from .schema import RIVIAN_SCHEMA
 from .exceptions import (
     RivianApiException,
     RivianApiRateLimitError,
@@ -135,47 +141,168 @@ class Rivian:
         self._ws_monitor: WebSocketMonitor | None = None
         self._subscriptions: dict[str, str] = {}
 
+        # GQL client infrastructure (initialized lazily on first use)
+        self._gql_client: Client | None = None
+        self._gql_transport: AIOHTTPTransport | None = None
+        self._ds: DSLSchema | None = None
+
+    async def _ensure_client(self, url: str = GRAPHQL_GATEWAY) -> Client:
+        """Ensure gql client is initialized and return it.
+
+        Creates the client on first call with schema introspection.
+        Updates headers on subsequent calls to reflect current auth state.
+        """
+        # Build current headers based on auth state
+        headers = {**BASE_HEADERS, "dc-cid": f"m-ios-{uuid.uuid4()}"}
+        if self._csrf_token:
+            headers["Csrf-Token"] = self._csrf_token
+        if self._app_session_token:
+            headers["A-Sess"] = self._app_session_token
+        if self._user_session_token:
+            headers["U-Sess"] = self._user_session_token
+        if self._access_token:
+            headers["Authorization"] = f"Bearer {self._access_token}"
+
+        # Initialize client on first use
+        if self._gql_client is None:
+            # Create session if needed (for non-gql methods)
+            if self._session is None:
+                self._session = aiohttp.ClientSession()
+                self._close_session = True
+
+            # AIOHTTPTransport will create its own session when connect() is called
+            # Note: We use a static schema definition instead of introspection
+            # to make testing easier and avoid extra network calls
+            self._gql_transport = AIOHTTPTransport(
+                url=url,
+                headers=headers,
+            )
+
+            # Build schema from our schema definition
+            schema = build_schema(RIVIAN_SCHEMA)
+
+            self._gql_client = Client(
+                transport=self._gql_transport,
+                fetch_schema_from_transport=False,  # Use our static schema instead
+                execute_timeout=self.request_timeout,
+                schema=schema,
+            )
+
+            # Build DSL schema for method usage
+            self._ds = DSLSchema(schema)
+        else:
+            # Update headers on existing transport
+            if self._gql_transport:
+                self._gql_transport.headers = headers
+
+        return self._gql_client
+
+    def _handle_gql_error(self, exception: TransportQueryError) -> None:
+        """Handle GQL transport errors and convert to Rivian exceptions.
+
+        Args:
+            exception: The TransportQueryError from gql
+
+        Raises:
+            Appropriate RivianApiException subclass based on error code
+        """
+        errors = exception.errors if hasattr(exception, 'errors') else []
+
+        for error in errors or []:
+            if isinstance(error, dict) and (extensions := error.get("extensions")):
+                code = extensions.get("code")
+                reason = extensions.get("reason")
+
+                # Check for specific error combinations
+                if (code, reason) in (
+                    ("BAD_USER_INPUT", "INVALID_OTP"),
+                    ("UNAUTHENTICATED", "OTP_TOKEN_EXPIRED"),
+                ):
+                    raise RivianInvalidOTP(str(exception))
+
+                if (code, reason) == ("CONFLICT", "ENROLL_PHONE_LIMIT_REACHED"):
+                    raise RivianPhoneLimitReachedError(str(exception))
+
+                # Check for generic error codes
+                if code and (err_cls := ERROR_CODE_CLASS_MAP.get(code)):
+                    raise err_cls(str(exception))
+
+        # If no specific error found, raise generic exception
+        raise RivianApiException(f"Error occurred while communicating with Rivian: {exception}")
+
     async def create_csrf_token(self) -> None:
         """Create cross-site-request-forgery (csrf) token."""
-        url = GRAPHQL_GATEWAY
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        headers = {**BASE_HEADERS}
+        # Build DSL mutation
+        query = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.createCsrfToken.select(
+                    self._ds.CreateCSRFTokenResponse.csrfToken,
+                    self._ds.CreateCSRFTokenResponse.appSessionToken,
+                )
+            )
+        )
 
-        graphql_json = {
-            "operationName": "CreateCSRFToken",
-            "query": "mutation CreateCSRFToken {\n  createCsrfToken {\n    __typename\n    csrfToken\n    appSessionToken\n  }\n}",
-            "variables": None,
-        }
+        # Execute query with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(query)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-
-        response_json = await response.json()
-
-        csrf_data = response_json["data"]["createCsrfToken"]
+        # Parse response
+        csrf_data = result["createCsrfToken"]
         self._csrf_token = csrf_data["csrfToken"]
         self._app_session_token = csrf_data["appSessionToken"]
 
     async def authenticate(self, username: str, password: str) -> None:
         """Authenticate against the Rivian GraphQL API with Username and Password"""
-        url = GRAPHQL_GATEWAY
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "Apollographql-Client-Name": APOLLO_CLIENT_NAME,
-        }
+        # Build DSL mutation with union type fragments
+        query = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.login.args(email=username, password=password).select(
+                    DSLInlineFragment().on(self._ds.MobileLoginResponse).select(
+                        self._ds.MobileLoginResponse.accessToken,
+                        self._ds.MobileLoginResponse.refreshToken,
+                        self._ds.MobileLoginResponse.userSessionToken,
+                    ),
+                    DSLInlineFragment().on(self._ds.MobileMFALoginResponse).select(
+                        self._ds.MobileMFALoginResponse.otpToken,
+                    ),
+                )
+            )
+        )
 
-        graphql_json = {
-            "operationName": "Login",
-            "query": "mutation Login($email: String!, $password: String!) {\n  login(email: $email, password: $password) {\n    __typename\n    ... on MobileLoginResponse {\n      __typename\n      accessToken\n      refreshToken\n      userSessionToken\n    }\n    ... on MobileMFALoginResponse {\n      __typename\n      otpToken\n    }\n  }\n}",
-            "variables": {"email": username, "password": password},
-        }
+        # Execute query with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(query)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-
-        response_json = await response.json()
-
-        login_data = response_json["data"]["login"]
+        # Parse response
+        login_data = result["login"]
 
         if "otpToken" in login_data:
             self._otp_needed = True
@@ -197,29 +324,41 @@ class Rivian:
 
     async def validate_otp(self, username: str, otp_code: str) -> None:
         """Validates OTP against the Rivian GraphQL API with Username, OTP Code, and OTP Token"""
-        url = GRAPHQL_GATEWAY
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "Apollographql-Client-Name": APOLLO_CLIENT_NAME,
-        }
+        # Build DSL mutation
+        query = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.loginWithOTP.args(
+                    email=username, otpCode=otp_code, otpToken=self._otp_token
+                ).select(
+                    DSLInlineFragment().on(self._ds.MobileLoginResponse).select(
+                        self._ds.MobileLoginResponse.accessToken,
+                        self._ds.MobileLoginResponse.refreshToken,
+                        self._ds.MobileLoginResponse.userSessionToken,
+                    ),
+                )
+            )
+        )
 
-        graphql_json = {
-            "operationName": "LoginWithOTP",
-            "query": "mutation LoginWithOTP($email: String!, $otpCode: String!, $otpToken: String!) {\n  loginWithOTP(email: $email, otpCode: $otpCode, otpToken: $otpToken) {\n    __typename\n    ... on MobileLoginResponse {\n      __typename\n      accessToken\n      refreshToken\n      userSessionToken\n    }\n  }\n}",
-            "variables": {
-                "email": username,
-                "otpCode": otp_code,
-                "otpToken": self._otp_token,
-            },
-        }
+        # Execute query with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(query)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-
-        response_json = await response.json()
-
-        login_data = response_json["data"]["loginWithOTP"]
+        # Parse response
+        login_data = result["loginWithOTP"]
 
         self._access_token = login_data["accessToken"]
         self._refresh_token = login_data["refreshToken"]
@@ -237,23 +376,38 @@ class Rivian:
 
     async def disenroll_phone(self, identity_id: str) -> bool:
         """Disenroll a phone."""
-        url = GRAPHQL_GATEWAY
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "U-Sess": self._user_session_token,
-        }
-        graphql_json = {
-            "operationName": "DisenrollPhone",
-            "variables": {"attrs": {"enrollmentId": identity_id}},
-            "query": "mutation DisenrollPhone($attrs: DisenrollPhoneAttributes!) { disenrollPhone(attrs: $attrs) { __typename success } }",
-        }
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-        if response.status == 200:
-            data = await response.json()
-            return data.get("data", {}).get("disenrollPhone", {}).get("success")
-        return False
+        # Build DSL mutation
+        mutation = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.disenrollPhone.args(
+                    attrs={"enrollmentId": identity_id}
+                ).select(
+                    self._ds.DisenrollPhoneResponse.success,
+                )
+            )
+        )
+
+        # Execute mutation with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(mutation)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
+
+        # Parse response
+        disenroll_data = result.get("disenrollPhone", {})
+        return disenroll_data.get("success", False)
 
     async def enroll_phone(
         self,
@@ -270,31 +424,44 @@ class Rivian:
         To enable vehicle control, the phone will then also need to be paired locally via BLE,
         which can be done via `ble.pair_phone`.
         """
-        url = GRAPHQL_GATEWAY
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "U-Sess": self._user_session_token,
-        }
-        graphql_json = {
-            "operationName": "EnrollPhone",
-            "variables": {
-                "attrs": {
-                    "userId": user_id,
-                    "vehicleId": vehicle_id,
-                    "publicKey": public_key,
-                    "type": device_type,
-                    "name": device_name,
-                }
-            },
-            "query": "mutation EnrollPhone($attrs: EnrollPhoneAttributes!) { enrollPhone(attrs: $attrs) { __typename success } }",
-        }
-        response = await self.__graphql_query(headers, url, graphql_json)
-        if response.status == 200:
-            data = await response.json()
-            if data.get("data", {}).get("enrollPhone", {}).get("success"):
-                return True
-        return False
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
+
+        # Build DSL mutation
+        mutation = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.enrollPhone.args(
+                    attrs={
+                        "userId": user_id,
+                        "vehicleId": vehicle_id,
+                        "publicKey": public_key,
+                        "type": device_type,
+                        "name": device_name,
+                    }
+                ).select(
+                    self._ds.EnrollPhoneResponse.success,
+                )
+            )
+        )
+
+        # Execute mutation with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(mutation)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
+
+        # Parse response
+        enroll_data = result.get("enrollPhone", {})
+        return enroll_data.get("success", False)
 
     async def get_drivers_and_keys(self, vehicle_id: str) -> ClientResponse:
         """Get drivers and keys."""
@@ -556,42 +723,61 @@ class Rivian:
           - `CABIN_PRECONDITIONING_SET_TEMP`: params = {"HVAC_set_temp": "deg_C"} where `deg_C` is a string value between 16 and 29 or 0/63.5 for LO/HI, respectively
           - `CHARGING_LIMITS`: params = {"SOC_limit": 50..100}
         """
+        # Validate command and params
         self._validate_vehicle_command(command, params)
 
+        # Convert command to string and generate HMAC
         command = str(command)
         timestamp = str(int(time.time()))
         hmac = generate_vehicle_command_hmac(
             command, timestamp, vehicle_key, private_key
         )
 
-        url = GRAPHQL_GATEWAY
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "U-Sess": self._user_session_token,
-        }
-        graphql_json = {
-            "operationName": "sendVehicleCommand",
-            "variables": {
-                "attrs": {
-                    "command": command,
-                    "hmac": hmac,
-                    "timestamp": str(timestamp),
-                    "vasPhoneId": phone_id,
-                    "deviceId": identity_id,
-                    "vehicleId": vehicle_id,
-                }
-                | ({"params": params} if params else {})
-            },
-            "query": "mutation sendVehicleCommand($attrs: VehicleCommandAttributes!) { sendVehicleCommand(attrs: $attrs) { __typename id command state } }",
-        }
+        # Prepare client
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-        if response.status == 200:
-            data = await response.json()
-            if status := data.get("data", {}).get("sendVehicleCommand", {}):
-                return status.get("id")
-        return None
+        # Build attrs dictionary
+        attrs = {
+            "command": command,
+            "hmac": hmac,
+            "timestamp": str(timestamp),
+            "vasPhoneId": phone_id,
+            "deviceId": identity_id,
+            "vehicleId": vehicle_id,
+        }
+        if params:
+            attrs["params"] = params
+
+        # Build DSL mutation
+        mutation = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.sendVehicleCommand.args(attrs=attrs).select(
+                    self._ds.SendVehicleCommandResponse.id,
+                    self._ds.SendVehicleCommandResponse.command,
+                    self._ds.SendVehicleCommandResponse.state,
+                )
+            )
+        )
+
+        # Execute mutation with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(mutation)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
+
+        # Parse response and return command ID
+        command_data = result.get("sendVehicleCommand", {})
+        return command_data.get("id")
 
     async def subscribe_for_vehicle_updates(
         self,
