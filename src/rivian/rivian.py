@@ -9,7 +9,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any, Type
+from typing import Any, Type, TypedDict
 from warnings import warn
 
 import aiohttp
@@ -110,6 +110,21 @@ def send_deprecation_warning(old_name: str, new_name: str) -> None:  # pragma: n
     _LOGGER.warning(message)
 
 
+class PublishResponse(TypedDict):
+    """Response from a publish operation.
+
+    The result field is an integer where 0 indicates success.
+    """
+
+    result: int  # 0 = success
+
+
+class ParseAndShareLocationResponse(TypedDict):
+    """Response from parseAndShareLocationToVehicle mutation."""
+
+    publishResponse: PublishResponse
+
+
 class Rivian:
     """Main class for the Rivian API Client"""
 
@@ -206,7 +221,7 @@ class Rivian:
         Raises:
             Appropriate RivianApiException subclass based on error code
         """
-        errors = exception.errors if hasattr(exception, 'errors') else []
+        errors = exception.errors if hasattr(exception, "errors") else []
 
         for error in errors or []:
             if isinstance(error, dict) and (extensions := error.get("extensions")):
@@ -228,7 +243,9 @@ class Rivian:
                     raise err_cls(str(exception))
 
         # If no specific error found, raise generic exception
-        raise RivianApiException(f"Error occurred while communicating with Rivian: {exception}")
+        raise RivianApiException(
+            f"Error occurred while communicating with Rivian: {exception}"
+        )
 
     async def create_csrf_token(self) -> None:
         """Create cross-site-request-forgery (csrf) token."""
@@ -274,12 +291,16 @@ class Rivian:
         query = dsl_gql(
             DSLMutation(
                 self._ds.Mutation.login.args(email=username, password=password).select(
-                    DSLInlineFragment().on(self._ds.MobileLoginResponse).select(
+                    DSLInlineFragment()
+                    .on(self._ds.MobileLoginResponse)
+                    .select(
                         self._ds.MobileLoginResponse.accessToken,
                         self._ds.MobileLoginResponse.refreshToken,
                         self._ds.MobileLoginResponse.userSessionToken,
                     ),
-                    DSLInlineFragment().on(self._ds.MobileMFALoginResponse).select(
+                    DSLInlineFragment()
+                    .on(self._ds.MobileMFALoginResponse)
+                    .select(
                         self._ds.MobileMFALoginResponse.otpToken,
                     ),
                 )
@@ -333,7 +354,9 @@ class Rivian:
                 self._ds.Mutation.loginWithOTP.args(
                     email=username, otpCode=otp_code, otpToken=self._otp_token
                 ).select(
-                    DSLInlineFragment().on(self._ds.MobileLoginResponse).select(
+                    DSLInlineFragment()
+                    .on(self._ds.MobileLoginResponse)
+                    .select(
                         self._ds.MobileLoginResponse.accessToken,
                         self._ds.MobileLoginResponse.refreshToken,
                         self._ds.MobileLoginResponse.userSessionToken,
@@ -662,7 +685,7 @@ class Rivian:
     def _validate_vehicle_command(
         self, command: VehicleCommand | str, params: dict[str, Any] | None = None
     ) -> None:
-        """Validate certian vehicle command/param combos."""
+        """Validate certain vehicle command/param combos."""
         if command == VehicleCommand.CHARGING_LIMITS:
             if not (
                 params
@@ -778,6 +801,66 @@ class Rivian:
         # Parse response and return command ID
         command_data = result.get("sendVehicleCommand", {})
         return command_data.get("id")
+
+    async def send_location_to_vehicle(
+        self,
+        location_str: str,
+        vehicle_id: str,
+    ) -> ParseAndShareLocationResponse:
+        """Send a location/address to the vehicle's navigation system.
+
+        This mutation does not require phone enrollment or HMAC signing.
+        It works via cloud API only and is a "fire-and-forget" operation.
+        The mutation returns success when the Rivian cloud receives the message,
+        not when the vehicle actually receives it. The vehicle will pick up the
+        destination when it next connects to the cloud.
+
+        Args:
+            location_str: Address string or coordinates
+                         Examples: "123 Main St, Springfield, IL 62701"
+                                  "40.7128,-74.0060" (latitude,longitude)
+            vehicle_id: The vehicle ID to send the location to
+
+        Returns:
+            Response dict with publishResponse.result field (int, where 0 = success)
+
+        Raises:
+            RivianApiException: If the request fails
+            RivianUnauthenticated: If authentication is invalid
+            RivianBadRequestError: If the location string cannot be parsed
+        """
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
+
+        # Build DSL mutation
+        mutation = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.parseAndShareLocationToVehicle.args(
+                    str=location_str, vehicleId=vehicle_id
+                ).select(
+                    self._ds.ParseAndShareLocationToVehicleResponse.publishResponse.select(
+                        self._ds.PublishResponse.result
+                    )
+                )
+            )
+        )
+
+        # Execute mutation with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(mutation)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while sending location to vehicle."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while sending location to vehicle."
+            ) from exception
+
+        return result.get("parseAndShareLocationToVehicle", {})
 
     async def subscribe_for_vehicle_updates(
         self,

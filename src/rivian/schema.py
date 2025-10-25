@@ -1,6 +1,8 @@
 """Minimal GraphQL schema for testing and DSL usage."""
 
 RIVIAN_SCHEMA = """
+scalar GenericScalar
+
 type Query {
   placeholder: String
 }
@@ -12,6 +14,7 @@ type Mutation {
   disenrollPhone(attrs: DisenrollPhoneInput!): DisenrollPhoneResponse
   enrollPhone(attrs: EnrollPhoneInput!): EnrollPhoneResponse
   sendVehicleCommand(attrs: SendVehicleCommandInput!): SendVehicleCommandResponse
+  parseAndShareLocationToVehicle(str: String!, vehicleId: String!): ParseAndShareLocationToVehicleResponse
 }
 
 type CreateCSRFTokenResponse {
@@ -58,11 +61,20 @@ input SendVehicleCommandInput {
   vasPhoneId: String!
   deviceId: String!
   vehicleId: String!
+  params: GenericScalar
 }
 
 type SendVehicleCommandResponse {
   id: String
   command: String
   state: String
+}
+
+type ParseAndShareLocationToVehicleResponse {
+  publishResponse: PublishResponse
+}
+
+type PublishResponse {
+  result: Int
 }
 """
