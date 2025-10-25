@@ -110,10 +110,27 @@ The client uses a **hybrid approach** combining two GraphQL execution methods:
 - HMAC generation for vehicle commands using ECDH shared secret
 - Key encoding/decoding helpers
 
-**`ble.py`** - Bluetooth Low Energy phone pairing
-- Pairs enrolled phones with vehicle locally via BLE
-- Required for vehicle control after phone enrollment
+**`ble.py`** - Bluetooth Low Energy phone pairing (Gen 1 & Gen 2 support)
+- Unified BLE pairing interface with automatic generation detection
+- Supports Gen 1 (LEGACY): Early production vehicles (2021-2023)
+- Supports Gen 2 (PRE_CCC): Late 2023+ vehicles with enhanced security
+- Auto-detects vehicle generation based on available BLE characteristics
+- Routes to appropriate protocol implementation
 - Optional dependency (requires `bleak` package)
+
+**`ble_gen2.py`** - Gen 2 (PRE_CCC) BLE pairing protocol
+- 4-state authentication state machine (INIT → PID_PNONCE_SENT → SIGNED_PARAMS_SENT → AUTHENTICATED)
+- ECDH (P-256) key derivation for shared secret
+- Enhanced HMAC-SHA256 with multi-component input
+- Protocol Buffer message serialization
+- Encrypted and unencrypted BLE characteristic channels
+
+**`ble_gen2_proto.py`** - Protocol Buffer message builders for Gen 2
+- Hand-crafted protobuf wire format construction (no .proto files needed)
+- Phase 1: Phone ID + Phone Nonce message
+- Phase 3: SIGNED_PARAMS with HMAC signature
+- HMAC input buffer composition
+- Vehicle nonce response parsing
 
 **`ws_monitor.py`** - WebSocket connection manager
 - Maintains persistent WebSocket connections
@@ -138,6 +155,21 @@ Vehicle commands require phone enrollment:
 2. Enroll phone: `enroll_phone()` with public key
 3. Pair via BLE: `ble.pair_phone()` with private key
 4. Send commands: `send_vehicle_command()` with HMAC signing
+
+**Gen 1 vs Gen 2 BLE Pairing:**
+
+| Feature | Gen 1 (LEGACY) | Gen 2 (PRE_CCC) |
+|---------|----------------|-----------------|
+| **Vehicles** | R1T/R1S early prod (2021-2023) | R1T/R1S late 2023+ |
+| **States** | 2-3 simple states | 4 explicit states |
+| **Serialization** | Simple binary | Protocol Buffers |
+| **HMAC Input** | phone_nonce + hmac | protobuf + csn + phone_id + pnonce + vnonce |
+| **Key Derivation** | Direct ECDSA | ECDH (P-256) |
+| **Encryption** | Basic | AES-GCM derived |
+| **CSN Counter** | +1 | +2 (even/odd) |
+| **Detection** | Automatic via BLE characteristics |
+
+The `ble.pair_phone()` function automatically detects the vehicle generation and uses the appropriate protocol.
 
 ### Vehicle State Access
 
@@ -309,8 +341,11 @@ aresponses.add("rivian.com", "/api/gql/gateway/graphql", "POST", response=MOCK_R
 - `async_timeout` - Python <3.11 only (builtin in 3.11+)
 
 **Optional:**
-- `bleak` (>=0.21,<2.0.0) - BLE phone pairing support
+- `bleak` (>=0.21,<2.0.0) - BLE phone pairing support (Gen 1 & Gen 2)
 - `dbus-fast` (^2.11.0) - Linux-only, required for BLE
+
+**Core (new):**
+- `protobuf` (>=3.20.0,<6.0.0) - Protocol Buffer support for Gen 2 BLE pairing
 
 Install with BLE support:
 ```bash
@@ -337,6 +372,8 @@ Supports Python 3.9-3.13. Uses conditional imports for compatibility:
 - Session tokens expire - handle `RivianUnauthenticated` exceptions
 - Vehicle commands return command ID - use `get_vehicle_command_state()` to check execution status
 - BLE functionality is optional - wrapped in try/except for import
+- **BLE pairing supports both Gen 1 and Gen 2 vehicles** with automatic detection
+- Gen 2 BLE uses Protocol Buffers, ECDH key derivation, and enhanced HMAC-SHA256
 - GraphQL queries use operation names and Apollo client headers for compatibility
 - The gql library v4.0.0 is used for DSL-based methods with a static schema
 - Static schema eliminates introspection overhead and simplifies testing
