@@ -3,6 +3,8 @@
 # pylint: disable=protected-access
 from __future__ import annotations
 
+from typing import Any
+
 import aiohttp
 import pytest
 from aresponses import ResponsesMockServer
@@ -484,3 +486,82 @@ async def test_validate_vehicle_command_temp_invalid() -> None:
     )  # HI
 
     await rivian.close()
+
+
+async def test_subscribe_for_charging_session() -> None:
+    """Test WebSocket subscription for charging session updates."""
+    async with aiohttp.ClientSession():
+        rivian = Rivian(
+            csrf_token="token", app_session_token="token", user_session_token="token"
+        )
+
+        # Create a simple callback to track if it's called
+        callback_called = False
+
+        def test_callback(data: dict[str, Any]) -> None:
+            nonlocal callback_called
+            callback_called = True
+
+        # Test that method can be called and returns None on error (no actual WebSocket server)
+        # The method is designed to return None when connection fails
+        unsubscribe = await rivian.subscribe_for_charging_session(
+            vehicle_id="test-vehicle-123", callback=test_callback
+        )
+
+        # In test environment without WebSocket server, should return None
+        assert unsubscribe is None
+
+        await rivian.close()
+
+
+async def test_subscribe_for_cloud_connection() -> None:
+    """Test WebSocket subscription for cloud connection updates."""
+    async with aiohttp.ClientSession():
+        rivian = Rivian(
+            csrf_token="token", app_session_token="token", user_session_token="token"
+        )
+
+        # Create a simple callback to track if it's called
+        callback_called = False
+
+        def test_callback(data: dict[str, Any]) -> None:
+            nonlocal callback_called
+            callback_called = True
+
+        # Test that method can be called and returns None on error (no actual WebSocket server)
+        # The method is designed to return None when connection fails
+        unsubscribe = await rivian.subscribe_for_cloud_connection(
+            vehicle_id="test-vehicle-123", callback=test_callback
+        )
+
+        # In test environment without WebSocket server, should return None
+        assert unsubscribe is None
+
+        await rivian.close()
+
+
+async def test_subscribe_for_command_state() -> None:
+    """Test WebSocket subscription for command state updates."""
+    async with aiohttp.ClientSession():
+        rivian = Rivian(
+            csrf_token="token", app_session_token="token", user_session_token="token"
+        )
+
+        # Create a simple callback to track if it's called
+        callback_called = False
+
+        def test_callback(data: dict[str, Any]) -> None:
+            nonlocal callback_called
+            callback_called = True
+
+        # Test that method can be called and returns None on error (no actual WebSocket server)
+        # The method is designed to return None when connection fails
+        # Note: This method takes command_id instead of vehicle_id
+        unsubscribe = await rivian.subscribe_for_command_state(
+            command_id="test-command-123", callback=test_callback
+        )
+
+        # In test environment without WebSocket server, should return None
+        assert unsubscribe is None
+
+        await rivian.close()

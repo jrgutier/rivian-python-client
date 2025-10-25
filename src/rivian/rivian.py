@@ -889,6 +889,103 @@ class Rivian:
             _LOGGER.error(ex)
             return None
 
+    async def subscribe_for_charging_session(
+        self,
+        vehicle_id: str,
+        callback: Callable[[dict[str, Any]], None],
+    ) -> Callable | None:
+        """Open a web socket connection to receive real-time charging session updates.
+
+        Args:
+            vehicle_id: The vehicle ID to subscribe to
+            callback: Function called when subscription data is received
+
+        Returns:
+            Unsubscribe function or None if connection fails
+        """
+        try:
+            await self._ws_connect()
+            assert self._ws_monitor
+            async with async_timeout.timeout(self.request_timeout):
+                await self._ws_monitor.connection_ack.wait()
+            payload = {
+                "operationName": "ChargingSession",
+                "query": "subscription ChargingSession($vehicleID: String!) { chargingSession(vehicleId: $vehicleID) { chartData { soc powerKW startTime endTime timeEstimationValidityStatus vehicleChargerState } liveData { powerKW kilometersChargedPerHour rangeAddedThisSession totalChargedEnergy timeElapsed timeRemaining price currency isFreeSession vehicleChargerState startTime } } }",
+                "variables": {"vehicleID": vehicle_id},
+            }
+            unsubscribe = await self._ws_monitor.start_subscription(payload, callback)
+            _LOGGER.debug(
+                "Vehicle %s subscribed to charging session updates", vehicle_id
+            )
+            return unsubscribe
+        except Exception as ex:  # pylint: disable=broad-except
+            _LOGGER.error(ex)
+            return None
+
+    async def subscribe_for_cloud_connection(
+        self,
+        vehicle_id: str,
+        callback: Callable[[dict[str, Any]], None],
+    ) -> Callable | None:
+        """Open a web socket connection to receive vehicle cloud connectivity updates.
+
+        Args:
+            vehicle_id: The vehicle ID to subscribe to
+            callback: Function called when subscription data is received
+
+        Returns:
+            Unsubscribe function or None if connection fails
+        """
+        try:
+            await self._ws_connect()
+            assert self._ws_monitor
+            async with async_timeout.timeout(self.request_timeout):
+                await self._ws_monitor.connection_ack.wait()
+            payload = {
+                "operationName": "VehicleCloudConnection",
+                "query": "subscription VehicleCloudConnection($vehicleID: String!) { vehicleCloudConnection(id: $vehicleID) { isOnline lastSync } }",
+                "variables": {"vehicleID": vehicle_id},
+            }
+            unsubscribe = await self._ws_monitor.start_subscription(payload, callback)
+            _LOGGER.debug(
+                "Vehicle %s subscribed to cloud connection updates", vehicle_id
+            )
+            return unsubscribe
+        except Exception as ex:  # pylint: disable=broad-except
+            _LOGGER.error(ex)
+            return None
+
+    async def subscribe_for_command_state(
+        self,
+        command_id: str,
+        callback: Callable[[dict[str, Any]], None],
+    ) -> Callable | None:
+        """Open a web socket connection to receive real-time vehicle command state updates.
+
+        Args:
+            command_id: The command ID to subscribe to
+            callback: Function called when subscription data is received
+
+        Returns:
+            Unsubscribe function or None if connection fails
+        """
+        try:
+            await self._ws_connect()
+            assert self._ws_monitor
+            async with async_timeout.timeout(self.request_timeout):
+                await self._ws_monitor.connection_ack.wait()
+            payload = {
+                "operationName": "VehicleCommandState",
+                "query": "subscription VehicleCommandState($id: String!) { vehicleCommandState(id: $id) { __typename id command createdAt state responseCode statusCode } }",
+                "variables": {"id": command_id},
+            }
+            unsubscribe = await self._ws_monitor.start_subscription(payload, callback)
+            _LOGGER.debug("Command %s subscribed to state updates", command_id)
+            return unsubscribe
+        except Exception as ex:  # pylint: disable=broad-except
+            _LOGGER.error(ex)
+            return None
+
     async def _ws_connect(self) -> ClientWebSocketResponse:
         """Initiate a websocket connection."""
 
