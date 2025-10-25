@@ -64,7 +64,7 @@ Pre-commit hooks automatically run `ruff` (linter with --fix) and `ruff-format` 
 
 The client uses a **hybrid approach** combining two GraphQL execution methods:
 
-1. **gql with DSL** (6 methods) - Type-safe queries using the `gql` library v3.x
+1. **gql with DSL** (6 methods) - Type-safe queries using the `gql` library v4.0.0
    - Used for methods with simple return types (void, bool, str)
    - Static schema defined in `schema.py` (not introspected)
    - Type-safe query building via DSL (Domain Specific Language)
@@ -298,10 +298,11 @@ aresponses.add("rivian.com", "/api/gql/gateway/graphql", "POST", response=MOCK_R
 - `propcache` (>=0.1.0,<=0.3.2) - Property caching (pinned for Home Assistant 2025.10.4)
 - `yarl` (>=1.6.0,<=1.20.1) - URL parsing library (pinned for Home Assistant 2025.10.4)
 - `cryptography` (>=41.0.1,<46.0) - Key generation and HMAC signing
-- `gql` (>=3.4.0,<4.0.0) with `[aiohttp, websockets]` extras - GraphQL client with DSL support
+- `gql` (^4.0.0) with `[aiohttp, websockets]` extras - GraphQL client with DSL support
   - Provides type-safe query building via DSL
   - AIOHTTPTransport for async HTTP
   - WebSocket support for subscriptions
+  - gql v4 is compatible with HA's aiohttp 3.12.15 and provides websockets >=14 for other integrations
 
 **Python Version Compatibility:**
 - `backports-strenum` (^1.2.4) - Python <3.11 only (StrEnum backport)
@@ -337,6 +338,7 @@ Supports Python 3.9-3.13. Uses conditional imports for compatibility:
 - Vehicle commands return command ID - use `get_vehicle_command_state()` to check execution status
 - BLE functionality is optional - wrapped in try/except for import
 - GraphQL queries use operation names and Apollo client headers for compatibility
-- The gql library v3.x is used for DSL-based methods with a static schema
+- The gql library v4.0.0 is used for DSL-based methods with a static schema
 - Static schema eliminates introspection overhead and simplifies testing
 - Dependencies are pinned to be compatible with Home Assistant 2025.10.4
+- gql v4 requires websockets >=14 which satisfies other Home Assistant integrations
