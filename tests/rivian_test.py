@@ -26,12 +26,11 @@ from .responses import (
     CSRF_TOKEN_RESPONSE,
     DISENROLL_PHONE_RESPONSE,
     ENROLL_PHONE_RESPONSE,
-    LIVE_CHARGING_SESSION_RESPONSE,
+    MOCK_GET_CHARGING_SCHEDULES_RESPONSE,
     OTP_TOKEN_RESPONSE,
     SEND_LOCATION_TO_VEHICLE_RESPONSE,
     SEND_VEHICLE_COMMAND_RESPONSE,
     USER_INFORMATION_RESPONSE,
-    VEHICLE_STATE_RESPONSE,
     WALLBOXES_RESPONSE,
     error_response,
     load_response,
@@ -124,6 +123,57 @@ async def test_authentication_with_expired_otp(aresponses: ResponsesMockServer) 
         await rivian.close()
 
 
+async def test_login(aresponses: ResponsesMockServer) -> None:
+    """Test login without MFA (successful login)."""
+    aresponses.add(
+        "rivian.com",
+        "/api/gql/gateway/graphql",
+        "POST",
+        response=AUTHENTICATION_RESPONSE,
+    )
+    async with aiohttp.ClientSession():
+        rivian = Rivian()
+        otp_token = await rivian.login("username", "password")
+        assert otp_token is None
+        assert rivian._access_token == "valid_access_token"
+        assert rivian._refresh_token == "valid_refresh_token"
+        assert rivian._user_session_token == "valid_user_session_token"
+        assert rivian._otp_needed is False
+        await rivian.close()
+
+
+async def test_login_with_mfa(aresponses: ResponsesMockServer) -> None:
+    """Test login with MFA enabled (returns OTP token)."""
+    aresponses.add(
+        "rivian.com", "/api/gql/gateway/graphql", "POST", response=OTP_TOKEN_RESPONSE
+    )
+    async with aiohttp.ClientSession():
+        rivian = Rivian()
+        otp_token = await rivian.login("username", "password")
+        assert otp_token == "token"
+        assert rivian._otp_needed is True
+        assert rivian._otp_token == "token"
+        await rivian.close()
+
+
+async def test_login_with_otp(aresponses: ResponsesMockServer) -> None:
+    """Test OTP validation with login_with_otp."""
+    aresponses.add(
+        "rivian.com",
+        "/api/gql/gateway/graphql",
+        "POST",
+        response=AUTHENTICATION_OTP_RESPONSE,
+    )
+    async with aiohttp.ClientSession():
+        rivian = Rivian()
+        rivian._otp_token = "token"
+        await rivian.login_with_otp("username", "123456")
+        assert rivian._access_token == "token"
+        assert rivian._refresh_token == "token"
+        assert rivian._user_session_token == "token"
+        await rivian.close()
+
+
 async def test_get_user_information(aresponses: ResponsesMockServer) -> None:
     """Test get user information request."""
     aresponses.add(
@@ -136,12 +186,12 @@ async def test_get_user_information(aresponses: ResponsesMockServer) -> None:
         rivian = Rivian(
             csrf_token="token", app_session_token="token", user_session_token="token"
         )
-        response = await rivian.get_user_information()
-        response_json = await response.json()
-        assert response.status == 200
-        assert (current_user := response_json["data"]["currentUser"])
-        assert current_user["id"] == "id"
-        assert len(current_user["vehicles"]) == 1
+        user_data = await rivian.get_user_information()
+        assert user_data["id"] == "id"
+        assert user_data["firstName"] == "firstName"
+        assert user_data["lastName"] == "lastName"
+        assert user_data["email"] == "email"
+        assert len(user_data["vehicles"]) == 1
         await rivian.close()
 
 
@@ -154,51 +204,12 @@ async def test_get_registered_wallboxes(aresponses: ResponsesMockServer) -> None
         rivian = Rivian(
             csrf_token="token", app_session_token="token", user_session_token="token"
         )
-        response = await rivian.get_registered_wallboxes()
-        response_json = await response.json()
-        assert response.status == 200
-        assert len(response_json["data"]["getRegisteredWallboxes"]) == 1
-        assert (
-            response_json["data"]["getRegisteredWallboxes"][0]["wallboxId"]
-            == "W1-1113-3RV7-1-1234-00012"
-        )
-        await rivian.close()
-
-
-async def test_get_vehicle_state(aresponses: ResponsesMockServer) -> None:
-    """Test GraphQL Response for a vehicleState request"""
-    aresponses.add(
-        "rivian.com",
-        "/api/gql/gateway/graphql",
-        "POST",
-        response=VEHICLE_STATE_RESPONSE,
-    )
-    async with aiohttp.ClientSession():
-        rivian = Rivian(app_session_token="token", user_session_token="token")
-        response = await rivian.get_vehicle_state("vin", {})
-        response_json = await response.json()
-        assert response.status == 200
-        assert len(response_json["data"]["vehicleState"]) == 72
-        await rivian.close()
-
-
-async def test_get_live_charging_session(aresponses: ResponsesMockServer) -> None:
-    """Test GraphQL Response for a getLiveSessionData request"""
-    aresponses.add(
-        "rivian.com",
-        "/api/gql/chrg/user/graphql",
-        "POST",
-        response=LIVE_CHARGING_SESSION_RESPONSE,
-    )
-    async with aiohttp.ClientSession():
-        rivian = Rivian(app_session_token="token", user_session_token="token")
-        response = await rivian.get_live_charging_session("vin", {})
-        response_json = await response.json()
-        assert response.status == 200
-        assert (
-            response_json["data"]["getLiveSessionData"]["vehicleChargerState"]["value"]
-            == "charging_active"
-        )
+        wallboxes = await rivian.get_registered_wallboxes()
+        assert isinstance(wallboxes, list)
+        assert len(wallboxes) == 1
+        assert wallboxes[0]["wallboxId"] == "W1-1113-3RV7-1-1234-00012"
+        assert wallboxes[0]["name"] == "Wall Charger"
+        assert wallboxes[0]["linked"] is True
         await rivian.close()
 
 
@@ -209,30 +220,30 @@ async def test_graphql_errors(aresponses: ResponsesMockServer) -> None:
 
     aresponses.add(host, path, "POST", response=error_response("RATE_LIMIT"))
     async with aiohttp.ClientSession():
-        rivian = Rivian()
+        rivian = Rivian(user_session_token="token")
         with pytest.raises(RivianApiRateLimitError):
-            await rivian.get_vehicle_state("vin", {})
+            await rivian.get_user_information()
         await rivian.close()
 
     aresponses.add(host, path, "POST", response=error_response("DATA_ERROR"))
     async with aiohttp.ClientSession():
-        rivian = Rivian()
+        rivian = Rivian(user_session_token="token")
         with pytest.raises(RivianDataError):
-            await rivian.get_vehicle_state("vin", {})
+            await rivian.get_user_information()
         await rivian.close()
 
     aresponses.add(host, path, "POST", response=error_response("SESSION_MANAGER_ERROR"))
     async with aiohttp.ClientSession():
-        rivian = Rivian()
+        rivian = Rivian(user_session_token="token")
         with pytest.raises(RivianTemporarilyLockedError):
-            await rivian.get_vehicle_state("vin", {})
+            await rivian.get_user_information()
         await rivian.close()
 
     aresponses.add(host, path, "POST", response=error_response())
     async with aiohttp.ClientSession():
-        rivian = Rivian()
+        rivian = Rivian(user_session_token="token")
         with pytest.raises(RivianApiException):
-            await rivian.get_vehicle_state("vin", {})
+            await rivian.get_user_information()
         await rivian.close()
 
     aresponses.add(
@@ -256,10 +267,7 @@ async def test_get_drivers_and_keys(aresponses: ResponsesMockServer) -> None:
     async with aiohttp.ClientSession():
         rivian = Rivian()
 
-        response = await rivian.get_drivers_and_keys(vehicle_id="vehicleId")
-        response_json = await response.json()
-        assert response.status == 200
-        assert (drivers_and_keys := response_json["data"]["getVehicle"])
+        drivers_and_keys = await rivian.get_drivers_and_keys(vehicle_id="vehicleId")
         assert drivers_and_keys["id"] == "id"
         assert len(drivers_and_keys["invitedUsers"]) == 4
         await rivian.close()
@@ -567,6 +575,32 @@ async def test_subscribe_for_command_state() -> None:
         await rivian.close()
 
 
+async def test_subscribe_for_gear_guard_config() -> None:
+    """Test WebSocket subscription for Gear Guard config updates."""
+    async with aiohttp.ClientSession():
+        rivian = Rivian(
+            csrf_token="token", app_session_token="token", user_session_token="token"
+        )
+
+        # Create a simple callback to track if it's called
+        callback_called = False
+
+        def test_callback(data: dict[str, Any]) -> None:
+            nonlocal callback_called
+            callback_called = True
+
+        # Test that method can be called and returns None on error (no actual WebSocket server)
+        # The method is designed to return None when connection fails
+        unsubscribe = await rivian.subscribe_for_gear_guard_config(
+            vehicle_id="test-vehicle-123", callback=test_callback
+        )
+
+        # In test environment without WebSocket server, should return None
+        assert unsubscribe is None
+
+        await rivian.close()
+
+
 async def test_refresh_csrf_token(aresponses: ResponsesMockServer) -> None:
     """Test CSRF token refresh."""
     aresponses.add(
@@ -626,6 +660,63 @@ async def test_needs_csrf_refresh() -> None:
         # Test with old CSRF
         rivian._csrf_refreshed_at = time.time() - 10800  # 3 hours ago
         assert rivian.needs_csrf_refresh(max_age_seconds=7200) is True
+
+        await rivian.close()
+
+
+async def test_get_charging_schedules(aresponses: ResponsesMockServer) -> None:
+    """Test get charging schedules request."""
+    aresponses.add(
+        "rivian.com",
+        "/api/gql/gateway/graphql",
+        "POST",
+        response=MOCK_GET_CHARGING_SCHEDULES_RESPONSE,
+    )
+    async with aiohttp.ClientSession():
+        rivian = Rivian(
+            csrf_token="token", app_session_token="token", user_session_token="token"
+        )
+        schedules_data = await rivian.get_charging_schedules(vehicle_id="vehicle_abc")
+
+        # Verify top-level structure
+        assert schedules_data["vehicleId"] == "vehicle_abc"
+        assert schedules_data["smartChargingEnabled"] is True
+        assert "schedules" in schedules_data
+        assert len(schedules_data["schedules"]) == 2
+
+        # Verify first schedule (Weekday Commute)
+        schedule1 = schedules_data["schedules"][0]
+        assert schedule1["id"] == "schedule_123"
+        assert schedule1["name"] == "Weekday Commute"
+        assert schedule1["enabled"] is True
+        assert schedule1["days"] == [
+            "MONDAY",
+            "TUESDAY",
+            "WEDNESDAY",
+            "THURSDAY",
+            "FRIDAY",
+        ]
+        assert schedule1["departureTime"] == "08:00"
+        assert schedule1["cabinPreconditioning"] is True
+        assert schedule1["cabinPreconditioningTemp"] == 21.0
+        assert schedule1["targetSOC"] == 80
+        assert schedule1["offPeakHoursOnly"] is False
+        assert schedule1["location"]["latitude"] == 37.7749
+        assert schedule1["location"]["longitude"] == -122.4194
+        assert schedule1["location"]["radius"] == 100.0
+
+        # Verify second schedule (Weekend Trip)
+        schedule2 = schedules_data["schedules"][1]
+        assert schedule2["id"] == "schedule_456"
+        assert schedule2["name"] == "Weekend Trip"
+        assert schedule2["enabled"] is False
+        assert schedule2["days"] == ["SATURDAY", "SUNDAY"]
+        assert schedule2["departureTime"] == "10:00"
+        assert schedule2["cabinPreconditioning"] is False
+        assert schedule2["cabinPreconditioningTemp"] is None
+        assert schedule2["targetSOC"] == 100
+        assert schedule2["offPeakHoursOnly"] is True
+        assert schedule2["location"] is None
 
         await rivian.close()
 

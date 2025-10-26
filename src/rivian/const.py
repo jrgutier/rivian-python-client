@@ -37,6 +37,13 @@ VEHICLE_STATE_PROPERTIES: Final[set[str]] = {
     "geoLocation",
     "gnssLocation",
     "gnssError",
+    # Connectivity
+    "cellularAntennaBars",
+    "cellularCarrier",
+    "cellularSignalStrength",
+    "wifiAntennaBars",
+    "wifiSignalStrength",
+    "wifiSsid",
     # TimeStamped(String|[Nullable]Float|Int)
     "activeDriverName",
     "alarmSoundStatus",
