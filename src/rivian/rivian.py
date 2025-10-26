@@ -9,11 +9,16 @@ import sys
 import time
 import uuid
 from collections.abc import Callable
-from typing import Any, Type
+from typing import Any, Type, TypedDict
 from warnings import warn
 
 import aiohttp
 from aiohttp import ClientResponse, ClientWebSocketResponse
+from gql import Client
+from gql.dsl import DSLMutation, DSLSchema, dsl_gql, DSLInlineFragment
+from gql.transport.aiohttp import AIOHTTPTransport
+from gql.transport.exceptions import TransportQueryError
+from graphql import build_schema
 
 from .const import (
     LIVE_SESSION_PROPERTIES,
@@ -22,6 +27,7 @@ from .const import (
     VEHICLE_STATES_SUBSCRIPTION_PROPERTIES,
     VehicleCommand,
 )
+from .schema import RIVIAN_SCHEMA
 from .exceptions import (
     RivianApiException,
     RivianApiRateLimitError,
@@ -48,13 +54,15 @@ GRAPHQL_GATEWAY = GRAPHQL_BASEPATH + "/gateway/graphql"
 GRAPHQL_CHARGING = GRAPHQL_BASEPATH + "/chrg/user/graphql"
 GRAPHQL_WEBSOCKET = "wss://api.rivian.com/gql-consumer-subscriptions/graphql"
 
-APOLLO_CLIENT_NAME = "com.rivian.ios.consumer-apollo-ios"
+APOLLO_CLIENT_NAME = "com.rivian.android.consumer"
+APOLLO_CLIENT_VERSION = "3.6.0-3989"
 
 BASE_HEADERS = {
-    "User-Agent": "RivianApp/707 CFNetwork/1237 Darwin/20.4.0",
+    "User-Agent": "okhttp/4.12.0",
     "Accept": "application/json",
     "Content-Type": "application/json",
-    "Apollographql-Client-Name": APOLLO_CLIENT_NAME,
+    "apollographql-client-name": APOLLO_CLIENT_NAME,
+    "apollographql-client-version": APOLLO_CLIENT_VERSION,
 }
 
 CLOUD_CONNECTION_TEMPLATE = "{ lastSync isOnline }"
@@ -104,6 +112,21 @@ def send_deprecation_warning(old_name: str, new_name: str) -> None:  # pragma: n
     _LOGGER.warning(message)
 
 
+class PublishResponse(TypedDict):
+    """Response from a publish operation.
+
+    The result field is an integer where 0 indicates success.
+    """
+
+    result: int  # 0 = success
+
+
+class ParseAndShareLocationResponse(TypedDict):
+    """Response from parseAndShareLocationToVehicle mutation."""
+
+    publishResponse: PublishResponse
+
+
 class Rivian:
     """Main class for the Rivian API Client"""
 
@@ -127,6 +150,10 @@ class Rivian:
         self._app_session_token = app_session_token
         self._user_session_token = user_session_token
 
+        # Token expiration tracking (timestamp when tokens were last refreshed)
+        self._token_refreshed_at = time.time() if access_token else 0
+        self._csrf_refreshed_at = time.time() if csrf_token else 0
+
         self.request_timeout = request_timeout
 
         self._otp_needed = False
@@ -135,47 +162,210 @@ class Rivian:
         self._ws_monitor: WebSocketMonitor | None = None
         self._subscriptions: dict[str, str] = {}
 
+        # GQL client infrastructure (initialized lazily on first use)
+        self._gql_client: Client | None = None
+        self._gql_transport: AIOHTTPTransport | None = None
+        self._ds: DSLSchema | None = None
+
+    async def _ensure_client(self, url: str = GRAPHQL_GATEWAY) -> Client:
+        """Ensure gql client is initialized and return it.
+
+        Creates the client on first call with schema introspection.
+        Updates headers on subsequent calls to reflect current auth state.
+        """
+        # Build current headers based on auth state
+        # NOTE: Following the official Android app (com.rivian.android.consumer),
+        # we do NOT send Authorization: Bearer tokens. The Android app uses only
+        # session tokens (U-Sess) for authentication. Session tokens remain valid
+        # much longer than access tokens and prevent authorization loss.
+        headers = {**BASE_HEADERS, "dc-cid": f"m-android-{uuid.uuid4()}"}
+        if self._csrf_token:
+            headers["Csrf-Token"] = self._csrf_token
+        if self._app_session_token:
+            headers["A-Sess"] = self._app_session_token
+        if self._user_session_token:
+            headers["U-Sess"] = self._user_session_token
+
+        # Initialize client on first use
+        if self._gql_client is None:
+            # Create session if needed (for non-gql methods)
+            if self._session is None:
+                self._session = aiohttp.ClientSession()
+                self._close_session = True
+
+            # AIOHTTPTransport will create its own session when connect() is called
+            # Note: We use a static schema definition instead of introspection
+            # to make testing easier and avoid extra network calls
+            self._gql_transport = AIOHTTPTransport(
+                url=url,
+                headers=headers,
+            )
+
+            # Build schema from our schema definition
+            schema = build_schema(RIVIAN_SCHEMA)
+
+            self._gql_client = Client(
+                transport=self._gql_transport,
+                fetch_schema_from_transport=False,  # Use our static schema instead
+                execute_timeout=self.request_timeout,
+                schema=schema,
+            )
+
+            # Build DSL schema for method usage
+            self._ds = DSLSchema(schema)
+        else:
+            # Update headers on existing transport
+            if self._gql_transport:
+                self._gql_transport.headers = headers
+
+        return self._gql_client
+
+    def _handle_gql_error(self, exception: TransportQueryError) -> None:
+        """Handle GQL transport errors and convert to Rivian exceptions.
+
+        Args:
+            exception: The TransportQueryError from gql
+
+        Raises:
+            Appropriate RivianApiException subclass based on error code
+        """
+        errors = exception.errors if hasattr(exception, "errors") else []
+
+        for error in errors or []:
+            if isinstance(error, dict) and (extensions := error.get("extensions")):
+                code = extensions.get("code")
+                reason = extensions.get("reason")
+
+                # Check for specific error combinations
+                if (code, reason) in (
+                    ("BAD_USER_INPUT", "INVALID_OTP"),
+                    ("UNAUTHENTICATED", "OTP_TOKEN_EXPIRED"),
+                ):
+                    raise RivianInvalidOTP(str(exception))
+
+                if (code, reason) == ("CONFLICT", "ENROLL_PHONE_LIMIT_REACHED"):
+                    raise RivianPhoneLimitReachedError(str(exception))
+
+                # Check for generic error codes
+                if code and (err_cls := ERROR_CODE_CLASS_MAP.get(code)):
+                    raise err_cls(str(exception))
+
+        # If no specific error found, raise generic exception
+        raise RivianApiException(
+            f"Error occurred while communicating with Rivian: {exception}"
+        )
+
+    async def _execute_async(
+        self, client: Client, query, operation_name: str = "operation"
+    ):
+        """Execute a GraphQL query asynchronously.
+
+        Args:
+            client: The GQL client to use
+            query: The DSL query to execute
+            operation_name: Name of the operation for logging
+
+        Returns:
+            The query result
+
+        Raises:
+            Various RivianApiException subclasses based on error type
+        """
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(query)
+            return result
+
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                f"Timeout occurred while executing {operation_name}."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                f"Error occurred during {operation_name}."
+            ) from exception
+
     async def create_csrf_token(self) -> None:
         """Create cross-site-request-forgery (csrf) token."""
-        url = GRAPHQL_GATEWAY
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        headers = {**BASE_HEADERS}
+        # Build DSL mutation
+        query = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.createCsrfToken.select(
+                    self._ds.CreateCSRFTokenResponse.csrfToken,
+                    self._ds.CreateCSRFTokenResponse.appSessionToken,
+                )
+            )
+        )
 
-        graphql_json = {
-            "operationName": "CreateCSRFToken",
-            "query": "mutation CreateCSRFToken {\n  createCsrfToken {\n    __typename\n    csrfToken\n    appSessionToken\n  }\n}",
-            "variables": None,
-        }
+        # Execute query with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(query)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-
-        response_json = await response.json()
-
-        csrf_data = response_json["data"]["createCsrfToken"]
+        # Parse response
+        csrf_data = result["createCsrfToken"]
         self._csrf_token = csrf_data["csrfToken"]
         self._app_session_token = csrf_data["appSessionToken"]
+        self._csrf_refreshed_at = time.time()
 
     async def authenticate(self, username: str, password: str) -> None:
         """Authenticate against the Rivian GraphQL API with Username and Password"""
-        url = GRAPHQL_GATEWAY
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "Apollographql-Client-Name": APOLLO_CLIENT_NAME,
-        }
+        # Build DSL mutation with union type fragments
+        query = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.login.args(email=username, password=password).select(
+                    DSLInlineFragment()
+                    .on(self._ds.MobileLoginResponse)
+                    .select(
+                        self._ds.MobileLoginResponse.accessToken,
+                        self._ds.MobileLoginResponse.refreshToken,
+                        self._ds.MobileLoginResponse.userSessionToken,
+                    ),
+                    DSLInlineFragment()
+                    .on(self._ds.MobileMFALoginResponse)
+                    .select(
+                        self._ds.MobileMFALoginResponse.otpToken,
+                    ),
+                )
+            )
+        )
 
-        graphql_json = {
-            "operationName": "Login",
-            "query": "mutation Login($email: String!, $password: String!) {\n  login(email: $email, password: $password) {\n    __typename\n    ... on MobileLoginResponse {\n      __typename\n      accessToken\n      refreshToken\n      userSessionToken\n    }\n    ... on MobileMFALoginResponse {\n      __typename\n      otpToken\n    }\n  }\n}",
-            "variables": {"email": username, "password": password},
-        }
+        # Execute query with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(query)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-
-        response_json = await response.json()
-
-        login_data = response_json["data"]["login"]
+        # Parse response
+        login_data = result["login"]
 
         if "otpToken" in login_data:
             self._otp_needed = True
@@ -184,6 +374,7 @@ class Rivian:
             self._access_token = login_data["accessToken"]
             self._refresh_token = login_data["refreshToken"]
             self._user_session_token = login_data["userSessionToken"]
+            self._token_refreshed_at = time.time()
 
     async def authenticate_graphql(
         self, username: str, password: str
@@ -197,33 +388,48 @@ class Rivian:
 
     async def validate_otp(self, username: str, otp_code: str) -> None:
         """Validates OTP against the Rivian GraphQL API with Username, OTP Code, and OTP Token"""
-        url = GRAPHQL_GATEWAY
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "Apollographql-Client-Name": APOLLO_CLIENT_NAME,
-        }
+        # Build DSL mutation
+        query = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.loginWithOTP.args(
+                    email=username, otpCode=otp_code, otpToken=self._otp_token
+                ).select(
+                    DSLInlineFragment()
+                    .on(self._ds.MobileLoginResponse)
+                    .select(
+                        self._ds.MobileLoginResponse.accessToken,
+                        self._ds.MobileLoginResponse.refreshToken,
+                        self._ds.MobileLoginResponse.userSessionToken,
+                    ),
+                )
+            )
+        )
 
-        graphql_json = {
-            "operationName": "LoginWithOTP",
-            "query": "mutation LoginWithOTP($email: String!, $otpCode: String!, $otpToken: String!) {\n  loginWithOTP(email: $email, otpCode: $otpCode, otpToken: $otpToken) {\n    __typename\n    ... on MobileLoginResponse {\n      __typename\n      accessToken\n      refreshToken\n      userSessionToken\n    }\n  }\n}",
-            "variables": {
-                "email": username,
-                "otpCode": otp_code,
-                "otpToken": self._otp_token,
-            },
-        }
+        # Execute query with error handling
+        try:
+            async with async_timeout.timeout(self.request_timeout):
+                result = await client.execute_async(query)
+        except TransportQueryError as exception:
+            self._handle_gql_error(exception)
+        except asyncio.TimeoutError as exception:
+            raise RivianApiException(
+                "Timeout occurred while connecting to Rivian API."
+            ) from exception
+        except Exception as exception:
+            raise RivianApiException(
+                "Error occurred while communicating with Rivian."
+            ) from exception
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-
-        response_json = await response.json()
-
-        login_data = response_json["data"]["loginWithOTP"]
+        # Parse response
+        login_data = result["loginWithOTP"]
 
         self._access_token = login_data["accessToken"]
         self._refresh_token = login_data["refreshToken"]
         self._user_session_token = login_data["userSessionToken"]
+        self._token_refreshed_at = time.time()
 
     async def validate_otp_graphql(
         self, username: str, otpCode: str
@@ -235,25 +441,83 @@ class Rivian:
         send_deprecation_warning("validate_otp_graphql", "validate_otp")
         return await self.validate_otp(username=username, otp_code=otpCode)
 
+    async def refresh_csrf_token(self) -> None:
+        """Refresh CSRF and app session tokens.
+
+        This should be called periodically (e.g., every 2-4 hours) to maintain
+        session validity. The Android app calls this to keep sessions alive.
+
+        This is a lighter-weight refresh than refresh_access_token and can be
+        done more frequently.
+        """
+        await self.create_csrf_token()
+        _LOGGER.debug("CSRF and app session tokens refreshed successfully")
+
+    def needs_token_refresh(self, max_age_seconds: int = 3600) -> bool:
+        """Check if access token needs refresh based on age.
+
+        Args:
+            max_age_seconds: Maximum token age before refresh (default: 1 hour)
+
+        Returns:
+            True if token is older than max_age_seconds or if no token exists
+        """
+        if not self._access_token or not self._token_refreshed_at:
+            return True
+        age = time.time() - self._token_refreshed_at
+        return age >= max_age_seconds
+
+    def needs_csrf_refresh(self, max_age_seconds: int = 7200) -> bool:
+        """Check if CSRF token needs refresh based on age.
+
+        Args:
+            max_age_seconds: Maximum CSRF age before refresh (default: 2 hours)
+
+        Returns:
+            True if CSRF is older than max_age_seconds or if no CSRF exists
+        """
+        if not self._csrf_token or not self._csrf_refreshed_at:
+            return True
+        age = time.time() - self._csrf_refreshed_at
+        return age >= max_age_seconds
+
+    async def ensure_fresh_tokens(self) -> None:
+        """Ensure CSRF tokens are fresh, refreshing them if necessary.
+
+        This is a convenience method that checks token age and automatically
+        refreshes CSRF/app session tokens if needed.
+
+        Note: Access token refresh is not supported by Rivian's API.
+        However, the client no longer sends Bearer tokens, so access token
+        expiration does not cause authentication failures.
+        """
+        # Refresh CSRF if needed
+        if self.needs_csrf_refresh():
+            _LOGGER.debug("CSRF token is stale, refreshing...")
+            await self.refresh_csrf_token()
+
     async def disenroll_phone(self, identity_id: str) -> bool:
         """Disenroll a phone."""
-        url = GRAPHQL_GATEWAY
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "U-Sess": self._user_session_token,
-        }
-        graphql_json = {
-            "operationName": "DisenrollPhone",
-            "variables": {"attrs": {"enrollmentId": identity_id}},
-            "query": "mutation DisenrollPhone($attrs: DisenrollPhoneAttributes!) { disenrollPhone(attrs: $attrs) { __typename success } }",
-        }
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-        if response.status == 200:
-            data = await response.json()
-            return data.get("data", {}).get("disenrollPhone", {}).get("success")
-        return False
+        # Build DSL mutation
+        mutation = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.disenrollPhone.args(
+                    attrs={"enrollmentId": identity_id}
+                ).select(
+                    self._ds.DisenrollPhoneResponse.success,
+                )
+            )
+        )
+
+        # Execute mutation
+        result = await self._execute_async(client, mutation, "disenrollPhone")
+
+        # Parse response
+        disenroll_data = result.get("disenrollPhone", {})
+        return disenroll_data.get("success", False)
 
     async def enroll_phone(
         self,
@@ -270,31 +534,32 @@ class Rivian:
         To enable vehicle control, the phone will then also need to be paired locally via BLE,
         which can be done via `ble.pair_phone`.
         """
-        url = GRAPHQL_GATEWAY
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "U-Sess": self._user_session_token,
-        }
-        graphql_json = {
-            "operationName": "EnrollPhone",
-            "variables": {
-                "attrs": {
-                    "userId": user_id,
-                    "vehicleId": vehicle_id,
-                    "publicKey": public_key,
-                    "type": device_type,
-                    "name": device_name,
-                }
-            },
-            "query": "mutation EnrollPhone($attrs: EnrollPhoneAttributes!) { enrollPhone(attrs: $attrs) { __typename success } }",
-        }
-        response = await self.__graphql_query(headers, url, graphql_json)
-        if response.status == 200:
-            data = await response.json()
-            if data.get("data", {}).get("enrollPhone", {}).get("success"):
-                return True
-        return False
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
+
+        # Build DSL mutation
+        mutation = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.enrollPhone.args(
+                    attrs={
+                        "userId": user_id,
+                        "vehicleId": vehicle_id,
+                        "publicKey": public_key,
+                        "type": device_type,
+                        "name": device_name,
+                    }
+                ).select(
+                    self._ds.EnrollPhoneResponse.success,
+                )
+            )
+        )
+
+        # Execute mutation
+        result = await self._execute_async(client, mutation, "enrollPhone")
+
+        # Parse response
+        enroll_data = result.get("enrollPhone", {})
+        return enroll_data.get("success", False)
 
     async def get_drivers_and_keys(self, vehicle_id: str) -> ClientResponse:
         """Get drivers and keys."""
@@ -495,7 +760,7 @@ class Rivian:
     def _validate_vehicle_command(
         self, command: VehicleCommand | str, params: dict[str, Any] | None = None
     ) -> None:
-        """Validate certian vehicle command/param combos."""
+        """Validate certain vehicle command/param combos."""
         if command == VehicleCommand.CHARGING_LIMITS:
             if not (
                 params
@@ -556,42 +821,99 @@ class Rivian:
           - `CABIN_PRECONDITIONING_SET_TEMP`: params = {"HVAC_set_temp": "deg_C"} where `deg_C` is a string value between 16 and 29 or 0/63.5 for LO/HI, respectively
           - `CHARGING_LIMITS`: params = {"SOC_limit": 50..100}
         """
+        # Validate command and params
         self._validate_vehicle_command(command, params)
 
+        # Convert command to string and generate HMAC
         command = str(command)
         timestamp = str(int(time.time()))
         hmac = generate_vehicle_command_hmac(
             command, timestamp, vehicle_key, private_key
         )
 
-        url = GRAPHQL_GATEWAY
-        headers = BASE_HEADERS | {
-            "Csrf-Token": self._csrf_token,
-            "A-Sess": self._app_session_token,
-            "U-Sess": self._user_session_token,
-        }
-        graphql_json = {
-            "operationName": "sendVehicleCommand",
-            "variables": {
-                "attrs": {
-                    "command": command,
-                    "hmac": hmac,
-                    "timestamp": str(timestamp),
-                    "vasPhoneId": phone_id,
-                    "deviceId": identity_id,
-                    "vehicleId": vehicle_id,
-                }
-                | ({"params": params} if params else {})
-            },
-            "query": "mutation sendVehicleCommand($attrs: VehicleCommandAttributes!) { sendVehicleCommand(attrs: $attrs) { __typename id command state } }",
-        }
+        # Prepare client
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
 
-        response = await self.__graphql_query(headers, url, graphql_json)
-        if response.status == 200:
-            data = await response.json()
-            if status := data.get("data", {}).get("sendVehicleCommand", {}):
-                return status.get("id")
-        return None
+        # Build attrs dictionary
+        attrs = {
+            "command": command,
+            "hmac": hmac,
+            "timestamp": str(timestamp),
+            "vasPhoneId": phone_id,
+            "deviceId": identity_id,
+            "vehicleId": vehicle_id,
+        }
+        if params:
+            attrs["params"] = params
+
+        # Build DSL mutation
+        mutation = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.sendVehicleCommand.args(attrs=attrs).select(
+                    self._ds.SendVehicleCommandResponse.id,
+                    self._ds.SendVehicleCommandResponse.command,
+                    self._ds.SendVehicleCommandResponse.state,
+                )
+            )
+        )
+
+        # Execute mutation
+        result = await self._execute_async(client, mutation, "sendVehicleCommand")
+
+        # Parse response and return command ID
+        command_data = result.get("sendVehicleCommand", {})
+        return command_data.get("id")
+
+    async def send_location_to_vehicle(
+        self,
+        location_str: str,
+        vehicle_id: str,
+    ) -> ParseAndShareLocationResponse:
+        """Send a location/address to the vehicle's navigation system.
+
+        This mutation does not require phone enrollment or HMAC signing.
+        It works via cloud API only and is a "fire-and-forget" operation.
+        The mutation returns success when the Rivian cloud receives the message,
+        not when the vehicle actually receives it. The vehicle will pick up the
+        destination when it next connects to the cloud.
+
+        Args:
+            location_str: Address string or coordinates
+                         Examples: "123 Main St, Springfield, IL 62701"
+                                  "40.7128,-74.0060" (latitude,longitude)
+            vehicle_id: The vehicle ID to send the location to
+
+        Returns:
+            Response dict with publishResponse.result field (int, where 0 = success)
+
+        Raises:
+            RivianApiException: If the request fails
+            RivianUnauthenticated: If authentication is invalid
+            RivianBadRequestError: If the location string cannot be parsed
+        """
+        client = await self._ensure_client(GRAPHQL_GATEWAY)
+        assert self._ds is not None
+
+        # Build DSL mutation
+        mutation = dsl_gql(
+            DSLMutation(
+                self._ds.Mutation.parseAndShareLocationToVehicle.args(
+                    str=location_str, vehicleId=vehicle_id
+                ).select(
+                    self._ds.ParseAndShareLocationToVehicleResponse.publishResponse.select(
+                        self._ds.PublishResponse.result
+                    )
+                )
+            )
+        )
+
+        # Execute mutation
+        result = await self._execute_async(
+            client, mutation, "parseAndShareLocationToVehicle"
+        )
+
+        return result.get("parseAndShareLocationToVehicle", {})
 
     async def subscribe_for_vehicle_updates(
         self,
@@ -620,6 +942,103 @@ class Rivian:
             _LOGGER.error(ex)
             return None
 
+    async def subscribe_for_charging_session(
+        self,
+        vehicle_id: str,
+        callback: Callable[[dict[str, Any]], None],
+    ) -> Callable | None:
+        """Open a web socket connection to receive real-time charging session updates.
+
+        Args:
+            vehicle_id: The vehicle ID to subscribe to
+            callback: Function called when subscription data is received
+
+        Returns:
+            Unsubscribe function or None if connection fails
+        """
+        try:
+            await self._ws_connect()
+            assert self._ws_monitor
+            async with async_timeout.timeout(self.request_timeout):
+                await self._ws_monitor.connection_ack.wait()
+            payload = {
+                "operationName": "ChargingSession",
+                "query": "subscription ChargingSession($vehicleID: String!) { chargingSession(vehicleId: $vehicleID) { chartData { soc powerKW startTime endTime timeEstimationValidityStatus vehicleChargerState } liveData { powerKW kilometersChargedPerHour rangeAddedThisSession totalChargedEnergy timeElapsed timeRemaining price currency isFreeSession vehicleChargerState startTime } } }",
+                "variables": {"vehicleID": vehicle_id},
+            }
+            unsubscribe = await self._ws_monitor.start_subscription(payload, callback)
+            _LOGGER.debug(
+                "Vehicle %s subscribed to charging session updates", vehicle_id
+            )
+            return unsubscribe
+        except Exception as ex:  # pylint: disable=broad-except
+            _LOGGER.error(ex)
+            return None
+
+    async def subscribe_for_cloud_connection(
+        self,
+        vehicle_id: str,
+        callback: Callable[[dict[str, Any]], None],
+    ) -> Callable | None:
+        """Open a web socket connection to receive vehicle cloud connectivity updates.
+
+        Args:
+            vehicle_id: The vehicle ID to subscribe to
+            callback: Function called when subscription data is received
+
+        Returns:
+            Unsubscribe function or None if connection fails
+        """
+        try:
+            await self._ws_connect()
+            assert self._ws_monitor
+            async with async_timeout.timeout(self.request_timeout):
+                await self._ws_monitor.connection_ack.wait()
+            payload = {
+                "operationName": "VehicleCloudConnection",
+                "query": "subscription VehicleCloudConnection($vehicleID: String!) { vehicleCloudConnection(id: $vehicleID) { isOnline lastSync } }",
+                "variables": {"vehicleID": vehicle_id},
+            }
+            unsubscribe = await self._ws_monitor.start_subscription(payload, callback)
+            _LOGGER.debug(
+                "Vehicle %s subscribed to cloud connection updates", vehicle_id
+            )
+            return unsubscribe
+        except Exception as ex:  # pylint: disable=broad-except
+            _LOGGER.error(ex)
+            return None
+
+    async def subscribe_for_command_state(
+        self,
+        command_id: str,
+        callback: Callable[[dict[str, Any]], None],
+    ) -> Callable | None:
+        """Open a web socket connection to receive real-time vehicle command state updates.
+
+        Args:
+            command_id: The command ID to subscribe to
+            callback: Function called when subscription data is received
+
+        Returns:
+            Unsubscribe function or None if connection fails
+        """
+        try:
+            await self._ws_connect()
+            assert self._ws_monitor
+            async with async_timeout.timeout(self.request_timeout):
+                await self._ws_monitor.connection_ack.wait()
+            payload = {
+                "operationName": "VehicleCommandState",
+                "query": "subscription VehicleCommandState($id: String!) { vehicleCommandState(id: $id) { __typename id command createdAt state responseCode statusCode } }",
+                "variables": {"id": command_id},
+            }
+            unsubscribe = await self._ws_monitor.start_subscription(payload, callback)
+            _LOGGER.debug("Command %s subscribed to state updates", command_id)
+            return unsubscribe
+        except Exception as ex:  # pylint: disable=broad-except
+            _LOGGER.error(ex)
+            return None
+
     async def _ws_connect(self) -> ClientWebSocketResponse:
         """Initiate a websocket connection."""
 
@@ -628,8 +1047,8 @@ class Rivian:
                 {
                     "payload": {
                         "client-name": APOLLO_CLIENT_NAME,
-                        "client-version": "1.13.0-1494",
-                        "dc-cid": f"m-ios-{uuid.uuid4()}",
+                        "client-version": APOLLO_CLIENT_VERSION,
+                        "dc-cid": f"m-android-{uuid.uuid4()}",
                         "u-sess": self._user_session_token,
                     },
                     "type": "connection_init",
@@ -657,7 +1076,12 @@ class Rivian:
             self._close_session = True
 
         if "dc-cid" not in headers:
-            headers["dc-cid"] = f"m-ios-{uuid.uuid4()}"
+            headers["dc-cid"] = f"m-android-{uuid.uuid4()}"
+
+        # Add Apollo operation headers if operation name is present
+        if operation_name := body.get("operationName"):
+            headers["X-APOLLO-OPERATION-NAME"] = operation_name
+            headers["X-APOLLO-OPERATION-ID"] = str(uuid.uuid4())
 
         try:
             async with async_timeout.timeout(self.request_timeout):
