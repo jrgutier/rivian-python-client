@@ -671,6 +671,46 @@ DISENROLL_PHONE_BAD_REQUEST_RESPONSE = {
     "data": None,
 }
 
+ENROLL_PHONE_RESPONSE = {
+    "data": {
+        "enrollPhone": {
+            "__typename": "EnrollPhoneResponse",
+            "success": True,
+        }
+    }
+}
+
+DISENROLL_PHONE_RESPONSE = {
+    "data": {
+        "disenrollPhone": {
+            "__typename": "DisenrollPhoneResponse",
+            "success": True,
+        }
+    }
+}
+
+SEND_VEHICLE_COMMAND_RESPONSE = {
+    "data": {
+        "sendVehicleCommand": {
+            "__typename": "SendVehicleCommandResponse",
+            "id": "command-id-123",
+            "command": "WAKE_VEHICLE",
+            "state": "sent",
+        }
+    }
+}
+
+SEND_LOCATION_TO_VEHICLE_RESPONSE = {
+    "data": {
+        "parseAndShareLocationToVehicle": {
+            "__typename": "ParseAndShareLocationToVehicleResponse",
+            "publishResponse": {
+                "__typename": "PublishResponse",
+                "result": 0,
+            },
+        }
+    }
+}
 
 def error_response(
     code: str | None = None, reason: str | None = None
