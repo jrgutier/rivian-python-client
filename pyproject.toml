@@ -35,6 +35,7 @@ aresponses = ">=2.1.5,<4.0.0"
 mypy = ">=1.7.0,<2.0.0"
 ruff = ">=0.4,<0.13"
 pre-commit = "^4.1.0"
+grpcio-tools = "^1.76.0"
 
 [tool.poetry.extras]
 ble = ["bleak", "dbus-fast"]

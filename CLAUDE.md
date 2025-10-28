@@ -204,6 +204,240 @@ Properties are defined in `const.py`:
 - `VEHICLE_STATE_PROPERTIES` - Available via REST API
 - `VEHICLE_STATES_SUBSCRIPTION_ONLY_PROPERTIES` - Only available via WebSocket
 
+### Parallax Protocol (Cloud-Based Commands)
+
+**Overview:**
+Parallax is a cloud-based GraphQL protocol for remote vehicle commands and data retrieval. Unlike BLE commands that require proximity, Parallax operates through Rivian's cloud infrastructure and works from anywhere with internet connectivity.
+
+**Use Cases:**
+- Remote monitoring and control via Home Assistant integration
+- Cloud-based data retrieval (charging sessions, trip progress, energy analytics)
+- Vehicle operations that don't require physical proximity
+- Features requiring internet connectivity
+
+**Architecture Components:**
+
+**`parallax.py`** - Core Parallax module
+- `RVMType` enum - 18 Remote Vehicle Module types covering all vehicle domains
+- `ParallaxCommand` class - Command wrapper with Base64 encoding
+- Helper functions for Phase 1 RVM types (6 implemented):
+  - `build_charging_session_query()` - Live charging data
+  - `build_climate_status_query()` - Climate hold status
+  - `build_climate_hold_command()` - Enable/disable climate hold
+  - `build_charging_schedule_command()` - Set charging time windows
+  - `build_ota_status_query()` - OTA update status
+  - `build_trip_progress_query()` - Navigation trip progress
+
+**`proto/`** - Protocol Buffer message definitions
+- `base.py` - Common types (`TimeOfDay`, `SessionCost`)
+- `charging.py` - Charging structures (`ChargingSessionLiveData`, `ChargingScheduleTimeWindow`)
+- `climate.py` - Climate control structures (`ClimateHoldSetting`, `ClimateHoldStatus`)
+- `ota.py` - OTA update structures
+- `navigation.py` - Navigation structures
+
+**Key Concepts:**
+
+1. **RVM Types**: 18 Remote Vehicle Module domains organized by function:
+   - Energy & Charging (4 types): Energy monitoring, charging sessions, schedules
+   - Navigation (2 types): Trip info, trip progress
+   - Climate & Comfort (3 types): Climate hold, cabin ventilation
+   - OTA Updates (2 types): Update status, schedule configuration
+   - GearGuard (2 types): Streaming consents, daily limits
+   - Geofence (1 type): Favorite geofences
+   - Vehicle (1 type): Wheels configuration
+   - Vehicle Access (2 types): Passive entry settings/status
+   - Holiday Celebrations (1 type): Halloween settings
+
+2. **Protocol Buffers**: Wire format serialization using `google.protobuf.message.Message`
+   - Messages inherit from `_message.Message` base class
+   - Each message implements `to_dict()` for debugging/logging
+   - Serialization via `SerializeToString()` method
+
+3. **Base64 Encoding**: All protobuf payloads are Base64-encoded before GraphQL transmission
+   - Handled automatically by `ParallaxCommand` class
+   - Empty payloads for read operations (queries)
+   - Encoded protobuf messages for write operations (commands)
+
+4. **GraphQL Mutation**: Commands sent via `sendParallaxPayload` mutation
+   - Requires vehicle ID and RVM type
+   - Accepts Base64-encoded payload
+   - Returns success status, sequence number, and response payload
+
+**Implementation Patterns:**
+
+```python
+# Read operation (query with empty payload)
+async def get_something(vehicle_id: str) -> dict:
+    """Query vehicle data."""
+    cmd = ParallaxCommand(RVMType.SOMETHING, b"")
+    return await self.send_parallax_command(vehicle_id, cmd)
+
+# Write operation (command with protobuf message)
+async def set_something(vehicle_id: str, value: Any) -> dict:
+    """Send command to vehicle."""
+    from .proto.module import SomeMessage
+
+    message = SomeMessage(value=value)
+    cmd = ParallaxCommand.from_protobuf(RVMType.SOMETHING, message)
+    return await self.send_parallax_command(vehicle_id, cmd)
+```
+
+**Adding New RVM Types:**
+
+1. **Add RVM Type to Enum** (`src/rivian/parallax.py`):
+   ```python
+   class RVMType(StrEnum):
+       # ... existing types
+       NEW_FEATURE_SETTING = "domain.service.new_feature_setting"
+   ```
+
+2. **Create Protobuf Message** (`src/rivian/proto/new_module.py`):
+   ```python
+   from google.protobuf import message as _message
+
+   class NewFeatureSetting(_message.Message):
+       """New feature setting.
+
+       Attributes:
+           param1: Description of param1
+           param2: Description of param2
+       """
+
+       def __init__(self, param1: str = "", param2: int = 0):
+           super().__init__()
+           self.param1 = param1
+           self.param2 = param2
+
+       def to_dict(self) -> dict:
+           """Convert message to dictionary."""
+           return {"param1": self.param1, "param2": self.param2}
+   ```
+
+3. **Add Helper Function** (`src/rivian/parallax.py`):
+   ```python
+   def build_new_feature_command(param1: str, param2: int = 0) -> ParallaxCommand:
+       """Build new feature command.
+
+       Args:
+           param1: Description
+           param2: Description
+
+       Returns:
+           ParallaxCommand ready to send
+       """
+       from .proto.new_module import NewFeatureSetting
+
+       setting = NewFeatureSetting(param1=param1, param2=param2)
+       return ParallaxCommand.from_protobuf(RVMType.NEW_FEATURE_SETTING, setting)
+   ```
+
+4. **Add Method to Rivian Class** (`src/rivian/rivian.py`):
+   ```python
+   async def set_new_feature(self, vehicle_id: str, param1: str, param2: int = 0) -> dict:
+       """Set new feature on vehicle.
+
+       Args:
+           vehicle_id: Vehicle VIN
+           param1: Description
+           param2: Description
+
+       Returns:
+           dict with success status and response payload
+       """
+       cmd = build_new_feature_command(param1, param2)
+       return await self.send_parallax_command(vehicle_id, cmd)
+   ```
+
+5. **Add Tests** (`tests/test_parallax.py`):
+   ```python
+   def test_build_new_feature_command(self):
+       """Test building new feature command."""
+       cmd = build_new_feature_command("test", 123)
+       assert cmd.rvm == RVMType.NEW_FEATURE_SETTING
+       assert isinstance(cmd.payload_b64, str)
+
+   async def test_set_new_feature(self, aresponses: ResponsesMockServer):
+       """Test setting new feature."""
+       aresponses.add("rivian.com", "/api/gql/gateway/graphql", "POST",
+                      response=PARALLAX_SUCCESS_RESPONSE)
+
+       async with aiohttp.ClientSession():
+           rivian = Rivian(csrf_token="token", app_session_token="token",
+                          user_session_token="token")
+           result = await rivian.set_new_feature("VIN123", "test", 123)
+           assert result["success"] is True
+           await rivian.close()
+   ```
+
+6. **Update Documentation** - Add usage example to README.md
+
+**Testing:**
+
+- **Unit Tests**: `tests/test_parallax.py` (55+ tests)
+  - RVMType enum validation
+  - ParallaxCommand creation and encoding
+  - Helper function behavior
+  - Protobuf message serialization
+  - Error handling
+
+- **Live Testing**: `examples/parallax_live_data.py`
+  - Real vehicle testing with actual credentials
+  - Demonstrates all Phase 1 RVM types
+  - Shows response payload decoding
+
+- **Mock Pattern**:
+  ```python
+  PARALLAX_SUCCESS_RESPONSE = {
+      "data": {
+          "sendParallaxPayload": {
+              "__typename": "ParallaxResponse",
+              "success": True,
+              "sequenceNumber": 42,
+              "payload": "CgQIARAB",  # Base64-encoded protobuf response
+          }
+      }
+  }
+  ```
+
+**Phase 1 vs Phase 2:**
+
+**Phase 1 (6 RVM types implemented):**
+- Charging session live data (RVM #3)
+- Charging schedule time window (RVM #16)
+- Climate hold setting (RVM #12)
+- Climate hold status (RVM #14)
+- OTA state (RVM #6)
+- Trip progress (RVM #11)
+
+**Phase 2 (12 RVM types pending):**
+- Parked energy monitor (RVM #1)
+- Charging session chart data (RVM #2)
+- Vehicle geofences (RVM #4)
+- OTA schedule configuration (RVM #5)
+- GearGuard consents (RVM #7)
+- GearGuard daily limits (RVM #8)
+- Vehicle wheels (RVM #9)
+- Trip info (RVM #10)
+- Cabin ventilation setting (RVM #13)
+- Passive entry setting (RVM #15)
+- Passive entry status (RVM #17)
+- Halloween settings (RVM #18)
+
+**Key Implementation Notes:**
+
+- RVM type format: `"domain.service.operation"` (e.g., `"comfort.cabin.climate_hold_setting"`)
+- Read operations use empty payload (`b""`), write operations use serialized protobuf
+- All commands return `dict` with `success`, `sequenceNumber`, and `payload` fields
+- Helper functions use `ParallaxCommand.from_protobuf()` for consistency
+- Protobuf messages must implement `to_dict()` for debugging
+- Test both successful and error responses for each RVM type
+
+**Cross-References:**
+- Related to GraphQL Client Architecture (uses DSL for `sendParallaxPayload` mutation)
+- Complements BLE commands (cloud vs. proximity-based)
+- Uses Protocol Buffers (same library as Gen 2 BLE pairing)
+- Error handling via `_handle_gql_error()` (see Error Handling with gql section)
+
 ## Code Patterns
 
 ### Adding New DSL Mutations
@@ -370,7 +604,7 @@ aresponses.add("rivian.com", "/api/gql/gateway/graphql", "POST", response=MOCK_R
 - `dbus-fast` (^2.11.0) - Linux-only, required for BLE
 
 **Core (new):**
-- `protobuf` (>=3.20.0,<6.0.0) - Protocol Buffer support for Gen 2 BLE pairing
+- `protobuf` (>=3.20.0,<6.0.0) - Protocol Buffer support for Gen 2 BLE pairing and Parallax cloud protocol
 
 Install with BLE support:
 ```bash
@@ -419,8 +653,10 @@ Legacy methods still work but are deprecated.
 - BLE functionality is optional - wrapped in try/except for import
 - **BLE pairing supports both Gen 1 and Gen 2 vehicles** with automatic detection
 - Gen 2 BLE uses Protocol Buffers, ECDH key derivation, and enhanced HMAC-SHA256
+- **Parallax protocol provides cloud-based vehicle commands** - works from anywhere with internet (see [PARALLAX_PROTOCOL.md](PARALLAX_PROTOCOL.md))
+- Parallax uses Base64-encoded Protocol Buffers for 18+ RVM (Remote Vehicle Module) types
 - GraphQL queries use operation names and Apollo client headers for compatibility
-- The gql library v3.5.3 is used for DSL-based methods with a static schema
+- The gql library v4.0.0 is used for DSL-based methods with a static schema
 - Static schema eliminates introspection overhead and simplifies testing
 - Dependencies are pinned to be compatible with Home Assistant 2025.10.4
-- gql v3 with websockets >=13 is compatible with Home Assistant integrations
+- gql v4 with websockets >=14 is compatible with Home Assistant integrations

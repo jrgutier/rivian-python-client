@@ -11,6 +11,30 @@ type Query {
   getVehicle(id: String!): Vehicle
   getVehicleMobileImages(resolution: String, extension: String, version: String): [VehicleImage]
   getVehicleOrderMobileImages(resolution: String, extension: String, version: String): [VehicleImage]
+  planTrip2(
+    waypoints: [RequestWaypointInput!]!
+    vehicle: String!
+    startingSoc: Float
+    startingRangeMeters: Float
+    targetArrivalSocPercent: Float
+    driveMode: DriveMode
+    networkPreferences: [NetworkPreference!]
+    trailerProfile: TripPlanTrailerProfile
+    hasAdapter: Boolean
+  ): PlanTrip2Response
+
+  # User & Referrals (from iOS app traffic)
+  getReferralCode: ReferralCodeResponse
+  getInvitationsByUser: [UserInvitation]
+
+  # Vehicle Services (vs/gql-gateway endpoint)
+  getAppointments(vehicleId: String!): ServiceAppointmentsResponse
+  getActiveRequests(vehicleId: String!): ServiceRequestsResponse
+  getProvisionedUsersForVehicle(vehicleId: String!): ProvisionedUsersResponse
+
+  # Content Services (gql/content/graphql endpoint)
+  chatSession(vehicleId: String): ChatSession
+
   placeholder: String
 }
 
@@ -20,15 +44,14 @@ type Mutation {
   deleteTrip(tripId: String!): DeleteTripResponse
   disenrollPhone(attrs: DisenrollPhoneInput!): DisenrollPhoneResponse
   enableCcc(vehicleId: String!, deviceId: String!): EnableCccResponse
-  enrollInSmartCharging(vehicleId: String!): SmartChargingEnrollmentResponse
+  enrollInSmartCharging(vehicleId: String!, utilityId: String!, tariffId: String, location: InputGeoCoordinates!): SmartChargingEnrollmentResponse
   enrollPhone(attrs: EnrollPhoneInput!): EnrollPhoneResponse
   login(email: String!, password: String!): LoginResponse
   loginWithOTP(email: String!, otpToken: String!, otpCode: String!): LoginResponse
-  parseAndShareLocationToVehicle(str: String!, vehicleId: String!): ParseAndShareLocationToVehicleResponse
-  planTripWithMultiStopV2(input: TripPlanInput!): TripPlanResponse
+  parseAndShareLocationToVehicle(str: String!, vehicleId: String!): ShareLocationResponse
   saveTrip(tripId: String!, name: String!): SaveTripResponse
   sendVehicleCommand(attrs: SendVehicleCommandInput!): SendVehicleCommandResponse
-  shareLocationToVehicle(latitude: Float!, longitude: Float!, vehicleId: String!): ShareLocationResponse
+  sendVehicleOperation(vehicleId: String!, payload: String!): SendVehicleOperationResponse
   sharePlaceIdToVehicle(placeId: String!, vehicleId: String!): ShareLocationResponse
   unenrollFromSmartCharging(vehicleId: String!): SmartChargingEnrollmentResponse
   updateDepartureSchedule(input: DepartureScheduleInput!): UpdateDepartureScheduleResponse
@@ -36,6 +59,12 @@ type Mutation {
   updateTrip(tripId: String!, input: UpdateTripInput!): UpdateTripResponse
   upgradeKeyToWCC2(vehicleId: String!, deviceId: String!): UpgradeKeyResponse
   verifySigningChallenge(vehicleId: String!, deviceId: String!, challengeId: String!, signature: String!): VerifyChallengeResponse
+  sendParallaxPayload(payload: String!, meta: ParallaxMeta!): ParallaxResponse
+
+  # Notifications (from iOS app traffic)
+  registerNotificationTokens(tokens: [NotificationTokenInput!]!): NotificationResponse
+  registerPushNotificationToken(token: String!, platform: String!, vehicleId: String): NotificationResponse
+  liveNotificationRegisterStartToken(vehicleId: String!, token: String!): NotificationResponse
 }
 
 type Subscription {
@@ -95,6 +124,12 @@ type SendVehicleCommandResponse {
   state: String
 }
 
+union SendVehicleOperationResponse = SendVehicleOperationSuccess
+
+type SendVehicleOperationSuccess {
+  success: Boolean!
+}
+
 type ParseAndShareLocationToVehicleResponse {
   publishResponse: PublishResponse
 }
@@ -127,6 +162,8 @@ type Vehicle {
   id: String!
   vin: String
   invitedUsers: [InvitedUser]
+  chargingSchedules: [ChargingSchedule]
+  trailerProfiles: TrailerProfiles
 }
 
 union InvitedUser = ProvisionedUser | UnprovisionedUser
@@ -493,5 +530,254 @@ type UpgradeKeyResponse {
   success: Boolean!
   upgraded: Boolean
   wccVersion: String
+}
+
+# Parallax Protocol Support
+
+input ParallaxMeta {
+  vehicleId: String!
+  model: String!
+  isVehicleModelOp: Boolean!
+  requiresWakeup: Boolean!
+}
+
+type ParallaxResponse {
+  success: Boolean!
+  sequenceNumber: Int
+  payload: String
+}
+
+# Charging Schedule Types (from Android app)
+
+type ChargingSchedule {
+  startTime: String
+  duration: Int
+  location: GeoCoordinate
+  amperage: Int
+  enabled: Boolean
+  weekDays: [String]
+}
+
+type GeoCoordinate {
+  latitude: Float!
+  longitude: Float!
+}
+
+input InputGeoCoordinates {
+  latitude: Float!
+  longitude: Float!
+}
+
+type TrailerProfiles {
+  trailerDefault: TrailerProfile
+  trailer1: TrailerProfile
+  trailer2: TrailerProfile
+  trailer3: TrailerProfile
+}
+
+# Trip Planning Types (from Android app)
+
+enum DriveMode {
+  CONSERVE
+  SPORT
+  ALL_PURPOSE
+}
+
+enum TripPlanTrailerProfile {
+  NONE
+  DEFAULT
+  CUSTOM_1
+  CUSTOM_2
+  CUSTOM_3
+}
+
+input NetworkPreference {
+  networkId: String!
+  preference: String!
+}
+
+input RequestWaypointInput {
+  latitude: Float!
+  longitude: Float!
+}
+
+type PlanTrip2Response {
+  plans: [TripPlan]
+  status: String
+}
+
+type TripPlan {
+  planIdentifierMetadata: PlanIdentifierMetadata
+  driveLegs: [DriveLeg]
+  waypoints: [TripWaypoint]
+  batteryEmptyLocation: BatteryEmptyLocation
+  summary: TripSummary
+}
+
+type PlanIdentifierMetadata {
+  planId: String
+  abrpRouteId: String
+}
+
+type DriveLeg {
+  distanceMeters: Float
+  durationSeconds: Int
+  energyConsumptionKwh: Float
+  polyline5: String
+}
+
+type TripWaypoint {
+  waypointType: String
+  requestWaypointsIndex: Int
+  charger: ChargerInfo
+  latitude: Float
+  longitude: Float
+  totalTimeAtWaypointSeconds: Int
+  arrivalSOCPercent: Float
+  arrivalRangeMeters: Float
+  arrivalEnergyKwh: Float
+  targetArrivalSocPercent: Float
+  arrivalTimeUTC: String
+  departureSOCPercent: Float
+  departureRangeMeters: Float
+  departureEnergyKwh: Float
+  departureTimeUTC: String
+  distanceFromOriginMeters: Float
+  distanceToDestinationMeters: Float
+  isSystemAdded: Boolean
+}
+
+type ChargerInfo {
+  adapterRequired: Boolean
+  entityId: String
+  name: String
+  maxPowerKw: Float
+  chargeDurationSeconds: Int
+}
+
+type BatteryEmptyLocation {
+  latitude: Float
+  longitude: Float
+  distanceToDestinationMeters: Float
+}
+
+type TripSummary {
+  destinationReachable: Boolean
+  socBelowLimitAtDestination: Boolean
+  totalChargeDurationSeconds: Int
+  totalDriveDurationSeconds: Int
+  totalDriveDistanceMeters: Float
+  totalTripDurationSeconds: Int
+  arrivalSOCPercent: Float
+  arrivalRangeMeters: Float
+  arrivalEnergyKwh: Float
+}
+
+# New Types from iOS App Traffic Analysis
+
+# User & Referrals
+type ReferralCodeResponse {
+  code: String
+  url: String
+  referralCode: String
+}
+
+# Vehicle Services Types
+type ServiceAppointmentsResponse {
+  appointments: [ServiceAppointment]
+}
+
+type ServiceAppointment {
+  id: String
+  vehicleId: String
+  status: String
+  scheduledTime: String
+  serviceType: String
+  location: ServiceLocation
+  notes: String
+  createdAt: String
+  updatedAt: String
+}
+
+type ServiceLocation {
+  name: String
+  address: String
+  city: String
+  state: String
+  zipCode: String
+  latitude: Float
+  longitude: Float
+}
+
+type ServiceRequestsResponse {
+  requests: [ServiceRequest]
+}
+
+type ServiceRequest {
+  id: String
+  vehicleId: String
+  status: String
+  description: String
+  category: String
+  priority: String
+  createdAt: String
+  updatedAt: String
+  assignedTo: String
+}
+
+# Provisioned Users
+type ProvisionedUsersResponse {
+  users: [ProvisionedVehicleUser]
+}
+
+type ProvisionedVehicleUser {
+  userId: String!
+  firstName: String
+  lastName: String
+  email: String
+  roles: [String]
+  status: String
+  inviteStatus: String
+  devices: [UserDevice]
+  createdAt: String
+  acceptedAt: String
+}
+
+# Content/Chat Types
+type ChatSession {
+  sessionId: String
+  active: Boolean
+  status: String
+  createdAt: String
+  messages: [ChatMessage]
+}
+
+type ChatMessage {
+  id: String
+  content: String
+  sender: String
+  timestamp: String
+  type: String
+}
+
+# Notification Types
+input NotificationTokenInput {
+  token: String!
+  platform: String!
+  deviceId: String
+  appVersion: String
+}
+
+type NotificationResponse {
+  success: Boolean!
+  message: String
+  registeredTokens: [String]
+  errors: [NotificationError]
+}
+
+type NotificationError {
+  token: String
+  error: String
+  code: String
 }
 """

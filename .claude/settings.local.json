@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Task",
+      "WebFetch",
+      "WebSearch",
+      "SlashCommand",
+      "Bash(/Users/jrgutier/.local/bin/poetry run pytest:*)",
+      "Bash(/Users/jrgutier/.local/bin/poetry run grep -n \"error_code_class_map\\|ERROR_CODE_CLASS_MAP\" src/rivian/rivian.py)",
+      "Bash(/Users/jrgutier/.local/bin/poetry run grep -n \"except asyncio.TimeoutError\" src/rivian/rivian.py)",
+      "Bash(/Users/jrgutier/.local/bin/poetry run grep -n \"execute_async\" src/rivian/rivian.py)",
+      "Bash(/Users/jrgutier/.local/bin/poetry run ruff:*)",
+      "Bash(/Users/jrgutier/.local/bin/poetry run mypy:*)",
+      "Bash(code .)",
+      "Bash(git add:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

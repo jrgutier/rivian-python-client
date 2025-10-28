@@ -8,6 +8,7 @@ Unofficial asynchronous Python client library for the Rivian API. Provides Graph
 - **Vehicle State**: Real-time vehicle data via WebSocket subscriptions
 - **Vehicle Commands**: Remote control (lock/unlock, climate, charging, etc.)
 - **Phone Enrollment**: BLE pairing for both Gen 1 and Gen 2 vehicles
+- **Parallax Protocol**: Cloud-based vehicle commands and data retrieval (analysis complete, implementation planned)
 - **Charging**: Live charging session data, wallbox management, and smart charging schedules (v2.1+)
 - **User Management**: Access user info, shared drivers, and vehicle images
 - **Location Sharing**: Send destinations to vehicle navigation (v2.1+)
@@ -115,6 +116,141 @@ async for state in client.subscribe_for_command_state(command_id):
     print(f"Command state: {state['state']}")
     if state['state'] in ['COMPLETE', 'FAILED']:
         break
+```
+
+### Parallax Protocol (Cloud-Based Commands)
+
+Parallax is Rivian's cloud-based protocol for remote vehicle commands and data retrieval. Unlike BLE commands which require proximity, Parallax operates through Rivian's cloud infrastructure and works from anywhere with internet connectivity.
+
+#### Phase 1: Implemented Features
+
+**Query Methods (Read-Only):**
+- `get_charging_session_live_data()` - Real-time charging metrics
+- `get_climate_hold_status()` - Current cabin climate state
+- `get_ota_status()` - Software update status
+- `get_trip_progress()` - Navigation progress
+
+**Control Methods (Write):**
+- `set_climate_hold()` - Configure cabin climate
+- `set_charging_schedule()` - Set charging time windows
+
+#### Getting Charging Data
+
+```python
+# Get live charging session data
+data = await client.get_charging_session_live_data(vehicle_id)
+if data['success']:
+    # Payload contains Base64-encoded protobuf
+    print(f"Charging payload: {data['payload']}")
+```
+
+#### Climate Control
+
+```python
+# Enable climate hold at 22°C for 2 hours
+result = await client.set_climate_hold(
+    vehicle_id=vehicle_id,
+    enabled=True,
+    temp_celsius=22.0,
+    duration_minutes=120
+)
+print(f"Climate set: {result['success']}")
+
+# Check climate status
+status = await client.get_climate_hold_status(vehicle_id)
+print(f"Climate active: {status['success']}")
+```
+
+#### Charging Schedule
+
+```python
+# Charge only between 10 PM and 6 AM
+result = await client.set_charging_schedule(
+    vehicle_id=vehicle_id,
+    start_hour=22,
+    start_minute=0,
+    end_hour=6,
+    end_minute=0
+)
+print(f"Schedule set: {result['success']}")
+```
+
+#### Advanced Usage
+
+```python
+from rivian import ParallaxCommand, RVMType
+
+# Build custom command
+cmd = ParallaxCommand(RVMType.HALLOWEEN_SETTINGS, b"")
+result = await client.send_parallax_command(vehicle_id, cmd)
+```
+
+#### All 18 RVM Types
+
+Phase 1 (6 implemented): Charging data, Climate, OTA, Trip progress
+Phase 2 (12 pending): Energy analytics, Geofence, GearGuard, Wheels, Ventilation, Passive entry, Halloween
+
+For complete protocol details: [PARALLAX_PROTOCOL.md](PARALLAX_PROTOCOL.md)
+
+## New in v2.2
+
+### User & Account Methods
+
+```python
+# Get referral code
+referral = await client.get_referral_code()
+print(f"Share this code: {referral['code']}")
+print(f"Or share this URL: {referral['url']}")
+
+# Get vehicle invitations
+invites = await client.get_invitations_by_user()
+for invite in invites:
+    print(f"Invited to {invite['vehicleModel']} by {invite['invitedByFirstName']}")
+```
+
+### Vehicle Services
+
+```python
+# Get service appointments
+appointments = await client.get_service_appointments(vehicle_id)
+for appt in appointments:
+    print(f"{appt['serviceType']} on {appt['scheduledTime']} - {appt['status']}")
+
+# Get active service requests
+requests = await client.get_active_service_requests(vehicle_id)
+for req in requests:
+    print(f"{req['category']}: {req['description']} [{req['status']}]")
+
+# Get users with access to vehicle
+users = await client.get_vehicle_provisioned_users(vehicle_id)
+for user in users:
+    print(f"{user['firstName']} {user['lastName']} - {', '.join(user['roles'])}")
+```
+
+### Push Notifications
+
+```python
+# Register multiple notification tokens
+tokens = [
+    {"token": "ios_token_1", "platform": "ios", "deviceId": "device1"},
+    {"token": "android_token_1", "platform": "android", "deviceId": "device2"}
+]
+result = await client.register_notification_tokens(tokens)
+print(f"Registered {len(result['registeredTokens'])} tokens")
+
+# Register single push notification
+await client.register_push_notification_token("my_token", "ios", vehicle_id)
+
+# Register live notification token
+await client.register_live_notification_token(vehicle_id, "live_token")
+```
+
+### Customer Support Chat
+
+```python
+# Get chat session
+session = await client.get_chat_session(vehicle_id)
+print(f"Chat session {session['sessionId']}: {session['status']}")
 ```
 
 ## New in v2.1
