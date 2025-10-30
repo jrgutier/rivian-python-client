@@ -57,17 +57,13 @@ GRAPHQL_VEHICLE_SERVICES = "https://rivian.com/api/vs/gql-gateway"  # Vehicle se
 GRAPHQL_CONTENT = GRAPHQL_BASEPATH + "/content/graphql"  # Content/chat endpoint
 GRAPHQL_WEBSOCKET = "wss://api.rivian.com/gql-consumer-subscriptions/graphql"
 
-APOLLO_CLIENT_NAME = "com.rivian.ios.consumer"
-APOLLO_CLIENT_VERSION = "3.6.0-4400"
+APOLLO_CLIENT_NAME = "com.rivian.ios.consumer-apollo-ios"
 
 BASE_HEADERS = {
-    "User-Agent": "RivianApp/4400 CFNetwork/1498.700.2 Darwin/23.6.0",
-    "Accept": "multipart/mixed;deferSpec=20220824,application/graphql-response+json,application/json",
+    "User-Agent": "RivianApp/707 CFNetwork/1237 Darwin/20.4.0",
+    "Accept": "application/json",
     "Content-Type": "application/json",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "apollographql-client-name": APOLLO_CLIENT_NAME,
-    "apollographql-client-version": APOLLO_CLIENT_VERSION,
+    "Apollographql-Client-Name": APOLLO_CLIENT_NAME,
 }
 
 CLOUD_CONNECTION_TEMPLATE = "{ lastSync isOnline }"
@@ -183,7 +179,7 @@ class Rivian:
         # we do NOT send Authorization: Bearer tokens. The Android app uses only
         # session tokens (U-Sess) for authentication. Session tokens remain valid
         # much longer than access tokens and prevent authorization loss.
-        headers = {**BASE_HEADERS, "dc-cid": f"m-android-{uuid.uuid4()}"}
+        headers = {**BASE_HEADERS, "dc-cid": f"m-ios-{uuid.uuid4()}"}
         if self._csrf_token:
             headers["Csrf-Token"] = self._csrf_token
         if self._app_session_token:
@@ -3365,8 +3361,8 @@ class Rivian:
                 {
                     "payload": {
                         "client-name": APOLLO_CLIENT_NAME,
-                        "client-version": APOLLO_CLIENT_VERSION,
-                        "dc-cid": f"m-android-{uuid.uuid4()}",
+                        "client-version": "1.13.0-1494",
+                        "dc-cid": f"m-ios-{uuid.uuid4()}",
                         "u-sess": self._user_session_token,
                     },
                     "type": "connection_init",
@@ -3394,12 +3390,7 @@ class Rivian:
             self._close_session = True
 
         if "dc-cid" not in headers:
-            headers["dc-cid"] = f"m-android-{uuid.uuid4()}"
-
-        # Add Apollo operation headers if operation name is present
-        if operation_name := body.get("operationName"):
-            headers["X-APOLLO-OPERATION-NAME"] = operation_name
-            headers["X-APOLLO-OPERATION-ID"] = str(uuid.uuid4())
+            headers["dc-cid"] = f"m-ios-{uuid.uuid4()}"
 
         try:
             async with async_timeout.timeout(self.request_timeout):
