@@ -10,7 +10,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.14"
+python = ">=3.9"
 # Pin to versions compatible with Home Assistant 2025.x
 aiohttp = ">=3.0.0"
 attrs = ">=20.3.0"
@@ -28,12 +28,12 @@ gql = {version = ">=3.0.0,<4.0.0", extras = ["aiohttp"]}
 websockets = ">=13.0,<16.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = ">=7.1.2,<9.0.0"
-pytest-asyncio = ">=0.18.3,<1.1.0"
-python-dotenv = ">=0.20,<1.2"
-aresponses = ">=2.1.5,<4.0.0"
-mypy = ">=1.7.0,<2.0.0"
-ruff = ">=0.4,<0.13"
+pytest = ">=7.1.2"
+pytest-asyncio = ">=0.18.3"
+python-dotenv = ">=0.20"
+aresponses = ">=2.1.5"
+mypy = ">=1.7.0"
+ruff = ">=0.4"
 pre-commit = "^4.1.0"
 grpcio-tools = "^1.76.0"
 
