@@ -1,0 +1,53 @@
+name: Validate Home Assistant Dependencies
+
+on:
+  push:
+    branches:
+      - main
+      - integrate-gql-client
+    paths:
+      - 'pyproject.toml'
+      - '.github/workflows/validate-ha-deps.yaml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'pyproject.toml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Poetry
+        uses: abatilo/actions-poetry@v2
+
+      - name: Fetch Home Assistant constraints
+        run: |
+          curl -s https://raw.githubusercontent.com/home-assistant/core/dev/homeassistant/package_constraints.txt -o ha_constraints.txt
+          echo "Home Assistant package constraints:"
+          cat ha_constraints.txt | grep -E "^(aiohttp|attrs|propcache|yarl|cryptography|protobuf|bleak|websockets|gql)" || true
+
+      - name: Test installation with HA constraints
+        run: |
+          # Try to install with HA constraints
+          pip install -c ha_constraints.txt '.[ble]' || {
+            echo "❌ Installation failed with Home Assistant constraints"
+            echo ""
+            echo "Common packages to check:"
+            grep -E "^(aiohttp|attrs|propcache|yarl|cryptography|protobuf|bleak|websockets|gql)" ha_constraints.txt || true
+            exit 1
+          }
+          echo "✅ Successfully installed with Home Assistant constraints"
+
+      - name: Display dependency comparison
+        if: always()
+        run: |
+          ./scripts/validate_ha_deps.sh || true

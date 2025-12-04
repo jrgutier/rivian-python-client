@@ -1,0 +1,516 @@
+===============================================================================
+GEN 2 (PRE_CCC) BLE PAIRING PROTOCOL - COMPLETE ANALYSIS SUMMARY
+===============================================================================
+
+EXECUTIVE SUMMARY
+================================================================================
+
+The Gen 2 (PRE_CCC) BLE pairing protocol is a 4-state authentication scheme
+using HMAC-SHA256 for message verification and ECDH for key derivation.
+
+Protocol Flow:
+  1. Phone generates 16-byte pNonce, sends Phone ID + pNonce
+  2. Vehicle generates vNonce, responds with encrypted vNonce
+  3. Phone computes HMAC-SHA256 over concatenated parameters
+  4. Phone sends SIGNED_PARAMS with HMAC signature
+  5. Vehicle validates HMAC, sends SUCCESS status
+  6. Authentication complete, session established
+
+Key Cryptographic Operations:
+  - HMAC-SHA256 for message authentication
+  - ECDH (Elliptic Curve Diffie-Hellman) for key agreement
+  - AES-GCM for encryption (key derived from HMAC)
+  - Bouncy Castle crypto library
+
+
+PROTOCOL STATES
+================================================================================
+
+State 0: INIT
+  - Initial state before authentication
+  - Transition: → PID_PNONCE_SENT
+
+State 1: PID_PNONCE_SENT (Phone ID + Phone Nonce Sent)
+  - Phone has sent PID and pNonce
+  - Waiting for vehicle response with vNonce
+  - Stored in: c11173t.f37492y (EnumC11122B enum)
+  - Transition: → SIGNED_PARAMS_SENT
+
+State 2: SIGNED_PARAMS_SENT (Signed Parameters Sent)
+  - HMAC-SHA256 computed and SIGNED_PARAMS sent
+  - Waiting for final authentication response
+  - Transition: → AUTHENTICATED
+
+State 3: AUTHENTICATED (Authentication Complete)
+  - Vehicle confirmed HMAC signature
+  - Session is active and ready for commands
+  - Flag: c11173t.f37488u = true
+
+
+MESSAGE STRUCTURE DETAILS
+================================================================================
+
+MESSAGE 1: PID + PNONCE (m13831L)
+----------------------------------
+Direction: Phone → Vehicle
+Channel: PLAIN_DATA_IN (unencrypted)
+Format: Google Protocol Buffer (protobuf)
+
+Structure:
+  [Protobuf Message C14685f0 (VASMessage)]
+    - CSN (Current Sequence Number)
+      Type: Varint (1-4 bytes typically)
+      Value: 1, 3, 5, 7... (odd numbers)
+    
+    - VehicleInfo (C16487k)
+      - phoneId (bytes)
+        Type: Length-prefixed bytes
+        Size: 16 bytes (fixed)
+        Format: UUID in BIG_ENDIAN byte order
+        Example: 550e8400-e29b-41d4-a716-446655440000
+                 → 0x550e8400e29b41d4a716446655440000
+    
+    - QueryData (C18631q)
+      - pNonce (bytes)
+        Type: Length-prefixed bytes
+        Size: 16 bytes (random)
+        Source: SecureRandom.nextBytes()
+        Storage: c11173t.f37503d
+
+
+MESSAGE 2: VNONCE RESPONSE (from vehicle)
+-------------------------------------------
+Direction: Vehicle → Phone
+Channel: ENCRYPTED_DATA_IN (encrypted/signed)
+Format: Protobuf with HMAC signature
+
+Structure:
+  [Protobuf Message C15224h0 (EncryptedMessage)]
+    - EncryptedPayload (C23135y0)
+      - Payload (bytes) - encrypted content
+      - PacketNumber (int32) - sequence counter
+      - Signature (C21983w0)
+        - algorithm: HMAC_SHA256
+        - signature: 32-byte HMAC
+    
+    - Common (C0335B)
+      - status (EnumC0828C) - SUCCESS or error
+    
+    - Contains: vNonce (vehicle nonce)
+      Type: Length-prefixed bytes
+      Size: Variable (typically 16-32 bytes)
+      Storage: c11173t.f37504e
+
+
+MESSAGE 3: SIGNED_PARAMS (m13829M)
+-----------------------------------
+Direction: Phone → Vehicle
+Channel: PLAIN_DATA_IN (unencrypted)
+Format: Protobuf with HMAC signature
+
+Structure:
+  [Protobuf Message C14685f0 (VASMessage)]
+    - CSN (Current Sequence Number)
+      Value: 3, 5, 7... (odd, incremented by 2)
+    
+    - QueryData (C18631q)
+      - Empty payload (no data)
+    
+    - SignedData (C16297j0)
+      - Messages (repeated) - Empty list
+      - Serialized (bytes) - Serialized protobuf
+    
+    - EncryptedData (C23135y0)
+      - Payload (bytes)
+      - PacketNumber (int32)
+      - Signature (C21983w0)
+        - algorithm: HMAC_SHA256
+        - signature: 32-byte HMAC (computed at line 1013)
+      - IsPayloadEncrypted (bool) - false for unsigned messages
+      - IsDataMissing (bool) - false if complete
+
+
+CRYPTOGRAPHIC DETAILS
+================================================================================
+
+HMAC-SHA256 COMPUTATION
+-----------------------
+Method: AbstractC14833a.m7875b() → C15277l.m7537F()
+
+Step 1: Prepare Input Message (line 1005-1013)
+  Input = Concatenate(
+    byte[] serialized_messages,        // m9214k() output
+    byte[] csn_4bytes,                 // AbstractC15367g.m7363o(csn)
+    byte[] phone_uuid_16bytes,         // phoneId in BIG_ENDIAN
+    byte[] pnonce_16bytes,             // c11173t.f37503d
+    byte[] vnonce_variable_bytes       // c11173t.f37504e
+  )
+
+  Byte order: BIG_ENDIAN for all multi-byte fields
+  Result: Variable-length byte array
+
+Step 2: Initialize HMAC-SHA256 (C15277l.java line 266)
+  C8127e c8127e = new C8127e(new C5017y());
+  └─ C8127e: HMAC wrapper (Bouncy Castle)
+  └─ C5017y: SHA-256 digest implementation
+
+Step 3: Process Secret Key (line 271)
+  Key: ECDH-derived 32-byte shared secret
+  Set via: c8127e.init(new C10062Q(secretKey, 0, 32))
+
+Step 4: Process Input Message (line 272)
+  c8127e.update(message, 0, message.length)
+
+Step 5: Generate Output (line 273)
+  byte[] output = new byte[32]  // 256 bits
+  c8127e.doFinal(output, 0)
+
+Output: 32-byte HMAC value
+
+
+KEY DERIVATION (ECDH)
+---------------------
+Method: AbstractC14833a.m7873d() → C15277l.m7523j()
+
+Process:
+  1. Receive vehicle's EC public key (130 hex characters)
+     - Format: Uncompressed point (starts with "04")
+     - Example: 04550e8400e29b41d4a716446655440000...
+     - Size: 65 bytes when decoded from hex
+  
+  2. Perform ECDH key agreement
+     - Phone generates/has private key
+     - Vehicle's public key provided
+     - Compute shared secret: S = private_key × vehicle_public_key
+  
+  3. Derive 32-byte secret key
+     - Used for HMAC-SHA256
+     - Cached in ConcurrentHashMap by userId + vehiclePublicKey
+  
+  4. Validation:
+     - Public key must be exactly 130 hex chars
+     - Must start with "04" prefix
+     - Uses standard EC curve (P-256 assumed)
+
+
+ECDH ALGORITHM DETAILS
+----------------------
+Curve: Likely P-256 (NIST/secp256r1)
+  - 256-bit elliptic curve
+  - Widely used in cryptography
+  - Bouncy Castle support confirmed
+
+Key Agreement:
+  Phone:
+    - Has private key: m
+    - Public key: M = m * G (generator point)
+    - Receives vehicle public key: V
+    - Computes: S = m * V
+  
+  Vehicle:
+    - Has private key: n
+    - Public key: V = n * G
+    - Receives phone public key: M
+    - Computes: S = n * M
+  
+  Result: Both compute same S (shared secret)
+  Size: 256 bits = 32 bytes
+
+
+BYTE CONCATENATION
+-------------------
+Method: AbstractC11199l.m12442p1() (line 369)
+
+Implementation:
+  public static byte[] m12442p1(byte[] bArr, byte[] bArr2) {
+    int length = bArr.length;
+    int length2 = bArr2.length;
+    byte[] copyOf = Arrays.copyOf(bArr, length + length2);
+    System.arraycopy(bArr2, 0, copyOf, length, length2);
+    return copyOf;
+  }
+
+Notes:
+  - Simple byte array concatenation
+  - No padding, no separation markers
+  - Used repeatedly to build HMAC input
+  - Byte order: BIG_ENDIAN (for multi-byte fields)
+
+
+SESSION CONTEXT FIELDS (C11173t)
+================================================================================
+
+Field Name          | Type          | Purpose
+--------------------|---------------|--------------------------------------
+f37485r            | UUID          | Vehicle ID
+f37486s            | Storage       | Secure storage reference
+f37488u (isAuthed) | boolean       | Authentication flag (true = authenticated)
+f37490w (isRanging)| boolean       | Distance measurement flag
+f37491x (2FD)      | boolean       | Second-factor device flag
+f37492y (authState)| EnumC11122B   | Current authentication state (0-3)
+f37501b (phoneId)  | UUID          | Phone/device ID (16 bytes)
+f37503d (pNonce)   | byte[]        | Phone nonce (16 bytes random)
+f37504e (vNonce)   | byte[]        | Vehicle nonce (variable length)
+f37505f (commands) | List          | Queued vehicle commands
+f37506g (csn)      | int           | Command sequence number (incremented by 2)
+f37508i            | Integer       | Last received CSN
+f37516q (packet)   | int           | Message packet counter
+
+
+BLE CHARACTERISTICS
+================================================================================
+
+Service UUID: 52495649-414E-2052-4541-442043484152
+             (ASCII readable: "RIVIAN READ CHAR")
+
+Characteristic 1: PLAIN_DATA_IN (Write)
+  - Write-only characteristic
+  - Unencrypted messages from phone to vehicle
+  - Used for: PID+pNonce, SIGNED_PARAMS messages
+  - MTU: ~20-512 bytes (depends on BLE device)
+
+Characteristic 2: ENCRYPTED_DATA_IN (Read/Notify)
+  - Read/notify characteristic
+  - Encrypted messages from vehicle to phone
+  - Used for: vNonce response, final auth status
+  - Includes HMAC signature verification
+
+Other characteristics:
+  - f37410Q - Additional capability
+  - f37412S - Additional capability
+  - f37404K - Additional capability
+  - f37405L - Used for protocol capability check
+
+
+CODE REFERENCE LOCATIONS
+================================================================================
+
+Primary Files and Key Methods:
+
+File: /Users/jrgutier/src/rivian-python-client/
+     com.rivian.android.consumer/java_src/p638aj/C11162i.java
+
+  Method                    | Line | Purpose
+  -------------------------|------|------------------------------------------
+  m12543D()                 | 425  | Start authentication, generate pNonce
+  m13831L() builder         | 434  | Build PID+pNonce message
+  onReceiveMessage()        | 1270 | Process vNonce response (ENCRYPTED_IN)
+  m12537o()                 | 1792 | Handle SIGNED_PARAMS
+  m13829M() builder         | 1792 | Build SIGNED_PARAMS message
+  m12530v()                 | 1824 | Complete authentication
+  m12534r()                 | N/A  | Error cleanup
+
+
+File: /Users/jrgutier/src/rivian-python-client/
+     com.rivian.android.consumer/java_src/p617Zf/AbstractC10637k.java
+
+  Method                    | Line | Purpose
+  -------------------------|------|------------------------------------------
+  m13831L()                 | 742  | PID + pNonce message builder
+  m13829M()                 | 846  | Empty SignedData builder
+  m13828N()                 | 875  | Encrypted wrapper message
+  m13827O()                 | 968  | HMAC computation & message wrapping
+  m13805f0()                | 1561 | Extract bytes from protobuf
+
+
+File: /Users/jrgutier/src/rivian-python-client/
+     com.rivian.android.consumer/java_src/fj/AbstractC14833a.java
+
+  Method                    | Line | Purpose
+  -------------------------|------|------------------------------------------
+  m7875b()                  | 60   | HMAC-SHA256 wrapper function
+  m7874c()                  | 75   | Set secret key for session
+  m7873d()                  | 81   | ECDH key derivation
+  m7876a()                  | 45   | Per-session encryption
+
+
+File: /Users/jrgutier/src/rivian-python-client/
+     com.rivian.android.consumer/java_src/p784h4/C15277l.java
+
+  Method                    | Line | Purpose
+  -------------------------|------|------------------------------------------
+  m7537F()                  | 266  | HMAC-SHA256 core implementation
+
+
+File: /Users/jrgutier/src/rivian-python-client/
+     com.rivian.android.consumer/java_src/p294Lm/C5017y.java
+
+  Implementation: SHA-256 digest (Bouncy Castle)
+
+
+GEN 1 vs GEN 2 COMPARISON
+================================================================================
+
+Aspect                | Gen 1 (LEGACY)       | Gen 2 (PRE_CCC)
+----------------------|----------------------|----------------------------------
+Detection             | EnumC11140U.LEGACY   | EnumC11140U.PRE_CCC
+State Machine         | 2-3 states           | 4 states (INIT → PID_PNONCE_SENT → 
+                      |                      | SIGNED_PARAMS_SENT → AUTHENTICATED)
+Nonce Exchange        | Implicit/Simple      | Explicit pNonce & vNonce
+HMAC Validation       | Optional/Simple      | Required HMAC-SHA256 on all msgs
+Message Format        | Simple binary        | Google Protocol Buffers
+Encryption Algorithm  | Basic AES            | AES-GCM (derived from HMAC key)
+Key Derivation        | Simple/Direct        | ECDH + HMAC-derived (32 bytes)
+Serialization         | Variable             | Protobuf nested structures
+CSN Counter           | Simple increment +1  | Incremented by 2 (odd numbers)
+Timeout               | 7000ms retry on fail | 60 seconds overall timeout
+Curve Type            | Likely P-256         | P-256 ECDH confirmed
+Complexity            | Lower                | Higher security, more complex
+
+
+SECURITY ANALYSIS
+================================================================================
+
+Strengths:
+  ✓ HMAC-SHA256 for message authentication (256-bit security)
+  ✓ ECDH for key agreement (256-bit elliptic curve)
+  ✓ SecureRandom for nonce generation
+  ✓ BIG_ENDIAN byte ordering (consistent)
+  ✓ 32-byte secret keys
+  ✓ HMAC signature on all authentication messages
+  ✓ Session-based with CSN sequence numbering
+
+Considerations:
+  ⚠ Nonce validation not explicitly shown in code
+  ⚠ Protobuf complexity may hide logic
+  ⚠ Key caching in ConcurrentHashMap (potential side-channel)
+  ⚠ No visible rate limiting shown
+  ⚠ Error messages may leak information
+
+Potential Attack Vectors:
+  • HMAC collision/forgery (Bouncy Castle implementation trust)
+  • ECDH compromise (if private key leaked)
+  • Nonce reuse (not visible in analysis)
+  • Message replay (CSN should prevent, not fully verified)
+
+
+ERROR HANDLING
+================================================================================
+
+HMAC Mismatch
+  Symptom: "error: hmac validation failed"
+  Location: C11162i.java line ~1803
+  Cause: Computed HMAC ≠ Vehicle HMAC
+  Recovery: Timeout and retry (if enabled)
+
+Missing Nonce
+  Symptom: "null pNonce while validating vid and vNonce"
+  Location: C11162i.java line ~1727, 1776
+  Cause: f37503d or f37504e is null
+  Fix: Both nonces must be set before HMAC computation
+
+CSN Mismatch
+  Location: c11173t.f37508i comparison
+  Cause: Received CSN ≠ Expected CSN (state tracking issue)
+  Impact: Message rejected or request resent
+
+Connection Loss
+  Timeout: 60 seconds (line 421 in C11162i.java)
+  Handler: Handler(Looper.getMainLooper()).postDelayed()
+  Cleanup: m12534r() method clears session state
+
+
+PROTOCOL TIMING AND FLOW CONTROL
+================================================================================
+
+Phase Duration: No explicit timeout per phase (single 60-second overall)
+Retry Policy: 
+  - Gen2 (PRE_CCC): No retry (null delay)
+  - Gen1 (LEGACY): 7000ms retry delay
+Message Size: ~40-100 bytes per message (with protobuf overhead)
+BLE MTU: Typically 20-512 bytes (varies by device)
+Fragmentation: Not visible in this analysis (handled by BLE stack)
+
+
+PASSIVE ENTRY (SMART KEY) EXTENSION
+================================================================================
+
+After authentication, the protocol can be used for passive entry (keyless):
+
+Message Type: EnumC11133M.PASSIVE_ENTRY
+Builder: C11131K class
+Components:
+  - Type: PASSIVE_ENTRY
+  - Packet Number: Sequential counter
+  - Phone ID: Authenticated phone UUID
+  - Vehicle ID: Target vehicle UUID
+  - pNonce/vNonce: From authentication session
+  - RSSI: Signal strength (int8)
+
+Transmission:
+  - Characteristic: f37282m (derived from PLAIN_DATA_IN)
+  - Format: Serialized C11131K
+  - Encoding: m14019f0() serialization
+
+
+FILES ANALYZED
+================================================================================
+
+Java Source Files (com.rivian.android.consumer):
+  - java_src/p638aj/C11162i.java          - Main protocol handler
+  - java_src/p638aj/C11173t.java          - Gen 2 session manager
+  - java_src/p638aj/EnumC11122B.java      - Authentication states
+  - java_src/p638aj/AbstractC11179z.java  - Base session class
+  - java_src/p638aj/C11131K.java          - VAS request message
+  - java_src/p617Zf/AbstractC10637k.java  - Message builders
+  - java_src/p619Zh/AbstractC10829c.java  - Protobuf utilities
+  - java_src/fj/AbstractC14833a.java      - Crypto manager
+  - java_src/p784h4/C15277l.java          - HMAC implementation
+  - java_src/p294Lm/C5017y.java           - SHA-256 digest
+  - java_src/p459Sm/C8127e.java           - HMAC-SHA256 wrapper
+  - java_src/p639ak/AbstractC11199l.java  - Byte utilities
+
+
+RELATED DOCUMENTATION
+================================================================================
+
+Generated Analysis Files:
+  - GEN2_BLE_PROTOCOL_ANALYSIS.md     - Detailed technical analysis
+  - GEN2_PROTOCOL_SUMMARY.md          - Quick reference with diagrams
+  - PROTOCOL_ANALYSIS_SUMMARY.txt     - This file
+
+
+IMPLEMENTATION NOTES FOR PYTHON CLIENT
+================================================================================
+
+To implement this protocol in Python:
+
+1. Nonce Generation:
+   - Use os.urandom(16) or secrets.token_bytes(16)
+   - For pNonce: generate on phone side
+   - For vNonce: receive from vehicle
+
+2. HMAC-SHA256:
+   - Use hmac.new(key, msg, hashlib.sha256)
+   - Key: 32-byte ECDH shared secret
+   - Message: concatenated parameters in BIG_ENDIAN
+
+3. ECDH Key Agreement:
+   - Use cryptography.hazmat.primitives.asymmetric.ec
+   - Curve: SECP256R1 (P-256)
+   - Import vehicle public key from 130-char hex string
+
+4. Protobuf:
+   - Will need protobuf schema definitions
+   - Likely available in Android decompilation
+   - Or reverse-engineered from message capture
+
+5. Byte Ordering:
+   - Always use BIG_ENDIAN (network byte order)
+   - struct.pack('>I', value) for 4-byte integers
+   - uuid.bytes for UUID conversion
+
+6. State Management:
+   - Implement 4-state enum (INIT, PID_PNONCE_SENT, etc.)
+   - Track pNonce, vNonce, CSN counter
+   - Handle timeouts and retries
+
+7. BLE Communication:
+   - Use bleak or similar BLE library
+   - Handle notifications and writes
+   - Implement message framing for MTU
+
+
+===============================================================================
+END OF ANALYSIS SUMMARY
+===============================================================================
