@@ -2364,4 +2364,4 @@ ble = ["bleak", "dbus-fast"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<3.14"
-content-hash = "82ae77f77e818a4ee720798dc59b160b6f529cee8562f6f5429c271b4107e2bb"
+content-hash = "53438ac157dabd742ca6e3fedfa73142ccf4ffb828e6df5408a847577a2c6b34"
