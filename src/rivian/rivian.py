@@ -2011,12 +2011,9 @@ class Rivian:
         from .parallax import build_halloween_command
 
         cmd = build_halloween_command(
-            enabled,
-            animation_mode,
-            brightness,
-            repeat_count,
-            schedule_enabled,
-            schedule_time,
+            light_show_enabled=enabled,
+            motion_light_sound_enabled=enabled,
+            costume_theme=animation_mode if animation_mode != "OFF" else "",
         )
         return await self.send_parallax_command(vehicle_id, cmd)
 
@@ -2167,13 +2164,11 @@ class Rivian:
         """
         from .parallax import build_gear_guard_consents_command
 
-        cmd = build_gear_guard_consents_command(
-            video_enabled,
-            audio_enabled,
-            cloud_storage_enabled,
-            local_storage_enabled,
-            consent_timestamp,
-        )
+        # build_gear_guard_consents_command only accepts consent_status
+        # If all are enabled, use CONSENTED; otherwise NOT_CONSENTED
+        all_enabled = video_enabled and audio_enabled and cloud_storage_enabled and local_storage_enabled
+        consent_status = "CONSENTED" if all_enabled else "NOT_CONSENTED"
+        cmd = build_gear_guard_consents_command(consent_status=consent_status)
         return await self.send_parallax_command(vehicle_id, cmd)
 
     async def get_gear_guard_daily_limits(self, vehicle_id: str) -> dict:
@@ -2262,9 +2257,10 @@ class Rivian:
 
         from .parallax import build_passive_entry_command
 
-        cmd = build_passive_entry_command(
-            enabled, unlock_on_approach, lock_on_walk_away, approach_distance_meters
-        )
+        # build_passive_entry_command only accepts duration_seconds
+        # If enabled, use a long duration; if disabled, use 0
+        duration_seconds = 3600 if enabled else 0
+        cmd = build_passive_entry_command(duration_seconds=duration_seconds)
         return await self.send_parallax_command(vehicle_id, cmd)
 
     async def send_location_to_vehicle(
