@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import uuid
 
 import aiohttp
 import pytest
@@ -22,25 +23,24 @@ from rivian.proto.base import SessionCost, TimeOfDay
 from rivian.proto.charging import ChargingScheduleTimeWindow, ChargingSessionLiveData
 from rivian.proto.climate import ClimateHoldSetting, ClimateHoldStatus
 
-# Mock responses
+# Test phone ID (16 bytes from UUID)
+TEST_PHONE_ID = uuid.UUID("12345678-1234-5678-1234-567812345678").bytes
+
+# Mock responses - using sendVehicleOperation mutation
 PARALLAX_SUCCESS_RESPONSE = {
     "data": {
-        "sendParallaxPayload": {
-            "__typename": "ParallaxResponse",
+        "sendVehicleOperation": {
+            "__typename": "SendVehicleOperationSuccess",
             "success": True,
-            "sequenceNumber": 42,
-            "payload": "CgQIARAB",
         }
     }
 }
 
 PARALLAX_FAILURE_RESPONSE = {
     "data": {
-        "sendParallaxPayload": {
-            "__typename": "ParallaxResponse",
+        "sendVehicleOperation": {
+            "__typename": "SendVehicleOperationSuccess",
             "success": False,
-            "sequenceNumber": 0,
-            "payload": "",
         }
     }
 }
@@ -53,7 +53,7 @@ PARALLAX_ERROR_RESPONSE = {
                 "reason": "UNAUTHENTICATED",
             },
             "message": "Authentication failed",
-            "path": ["sendParallaxPayload"],
+            "path": ["sendVehicleOperation"],
         }
     ],
     "data": None,
@@ -71,21 +71,38 @@ class TestRVMType:
     def test_rvm_type_values(self) -> None:
         """Test specific RVM type values."""
         # Energy & Charging (4 types)
-        assert RVMType.PARKED_ENERGY_MONITOR == "energy_edge_compute.graphs.parked_energy_distributions"
-        assert RVMType.CHARGING_SESSION_CHART_DATA == "energy_edge_compute.graphs.charging_graph_global"
-        assert RVMType.CHARGING_SESSION_LIVE_DATA == "energy_edge_compute.graphs.charge_session_breakdown"
+        assert (
+            RVMType.PARKED_ENERGY_MONITOR
+            == "energy_edge_compute.graphs.parked_energy_distributions"
+        )
+        assert (
+            RVMType.CHARGING_SESSION_CHART_DATA
+            == "energy_edge_compute.graphs.charging_graph_global"
+        )
+        assert (
+            RVMType.CHARGING_SESSION_LIVE_DATA
+            == "energy_edge_compute.graphs.charge_session_breakdown"
+        )
         assert RVMType.CHARGING_SCHEDULE_TIME_WINDOW == "charging.schedule.time_window"
 
         # Geofence (1 type)
-        assert RVMType.VEHICLE_GEO_FENCES == "geofence.geofence_service.favoriteGeofences"
+        assert (
+            RVMType.VEHICLE_GEO_FENCES == "geofence.geofence_service.favoriteGeofences"
+        )
 
         # OTA Updates (2 types)
         assert RVMType.OTA_SCHEDULE_CONFIGURATION == "ota.user_schedule.ota_config"
         assert RVMType.OTA_STATE == "ota.ota_state.vehicle_ota_state"
 
         # GearGuard (2 types)
-        assert RVMType.GEAR_GUARD_CONSENTS == "gearguard_streaming.privacy.gearguard_streaming_in_vehicle_consent"
-        assert RVMType.GEAR_GUARD_DAILY_LIMITS == "gearguard_streaming.privacy.gearguard_streaming_daily_limit"
+        assert (
+            RVMType.GEAR_GUARD_CONSENTS
+            == "gearguard_streaming.privacy.gearguard_streaming_in_vehicle_consent"
+        )
+        assert (
+            RVMType.GEAR_GUARD_DAILY_LIMITS
+            == "gearguard_streaming.privacy.gearguard_streaming_daily_limit"
+        )
 
         # Vehicle (1 type)
         assert RVMType.VEHICLE_WHEELS == "vehicle.wheels.vehicle_wheels"
@@ -96,15 +113,24 @@ class TestRVMType:
 
         # Climate & Comfort (3 types)
         assert RVMType.CLIMATE_HOLD_SETTING == "comfort.cabin.climate_hold_setting"
-        assert RVMType.CABIN_VENTILATION_SETTING == "comfort.cabin.cabin_ventilation_setting"
+        assert (
+            RVMType.CABIN_VENTILATION_SETTING
+            == "comfort.cabin.cabin_ventilation_setting"
+        )
         assert RVMType.CLIMATE_HOLD_STATUS == "comfort.cabin.climate_hold_status"
 
         # Vehicle Access (2 types)
-        assert RVMType.PASSIVE_ENTRY_SETTING == "vehicle_access.passive_entry.passive_entry"
+        assert (
+            RVMType.PASSIVE_ENTRY_SETTING
+            == "vehicle_access.passive_entry.passive_entry"
+        )
         assert RVMType.PASSIVE_ENTRY_STATUS == "vehicle_access.state.passive_entry"
 
         # Holiday Celebrations (1 type)
-        assert RVMType.HALLOWEEN_SETTINGS == "holiday_celebration.mobile_vehicle_settings.halloween_celebration_settings"
+        assert (
+            RVMType.HALLOWEEN_SETTINGS
+            == "holiday_celebration.mobile_vehicle_settings.halloween_celebration_settings"
+        )
 
     def test_rvm_type_is_string(self) -> None:
         """Test that RVM types are strings."""
@@ -165,7 +191,9 @@ class TestParallaxCommand:
         """
         from rivian.proto.climate import ClimateHoldSetting
 
-        setting = ClimateHoldSetting(enabled=True, duration_minutes=60, target_temp_celsius=22.0)
+        setting = ClimateHoldSetting(
+            enabled=True, duration_minutes=60, target_temp_celsius=22.0
+        )
         cmd = ParallaxCommand.from_protobuf(RVMType.CLIMATE_HOLD_SETTING, setting)
 
         assert cmd.rvm == RVMType.CLIMATE_HOLD_SETTING
@@ -187,7 +215,9 @@ class TestParallaxCommand:
 
         time = TimeOfDay(hour=10, minute=30)
         custom_id = "test-custom-id-456"
-        cmd = ParallaxCommand.from_protobuf(RVMType.CHARGING_SCHEDULE_TIME_WINDOW, time, custom_id)
+        cmd = ParallaxCommand.from_protobuf(
+            RVMType.CHARGING_SCHEDULE_TIME_WINDOW, time, custom_id
+        )
 
         assert cmd.command_id == custom_id
         assert cmd.payload_b64 != ""
@@ -355,7 +385,9 @@ class TestProtobufMessages:
 
     def test_climate_hold_setting_creation(self) -> None:
         """Test ClimateHoldSetting message creation."""
-        setting = ClimateHoldSetting(enabled=True, duration_minutes=120, target_temp_celsius=22.0)
+        setting = ClimateHoldSetting(
+            enabled=True, duration_minutes=120, target_temp_celsius=22.0
+        )
 
         assert setting.enabled is True
         assert setting.duration_minutes == 120
@@ -363,7 +395,9 @@ class TestProtobufMessages:
 
     def test_climate_hold_setting_to_dict(self) -> None:
         """Test ClimateHoldSetting to_dict conversion."""
-        setting = ClimateHoldSetting(enabled=False, duration_minutes=60, target_temp_celsius=20.0)
+        setting = ClimateHoldSetting(
+            enabled=False, duration_minutes=60, target_temp_celsius=20.0
+        )
         setting_dict = setting.to_dict()
 
         assert setting_dict == {
@@ -378,14 +412,18 @@ class TestProtobufMessages:
         Validates that ClimateHoldSetting can be serialized to protobuf
         wire format and produces non-empty byte output.
         """
-        setting = ClimateHoldSetting(enabled=True, duration_minutes=120, target_temp_celsius=22.0)
+        setting = ClimateHoldSetting(
+            enabled=True, duration_minutes=120, target_temp_celsius=22.0
+        )
         serialized = setting.SerializeToString()
 
         assert isinstance(serialized, bytes)
         assert len(serialized) > 0
 
         # Test with all fields populated
-        setting_full = ClimateHoldSetting(enabled=True, duration_minutes=180, target_temp_celsius=25.5)
+        setting_full = ClimateHoldSetting(
+            enabled=True, duration_minutes=180, target_temp_celsius=25.5
+        )
         serialized_full = setting_full.SerializeToString()
         assert len(serialized_full) > 0
 
@@ -408,7 +446,11 @@ class TestProtobufMessages:
     def test_climate_hold_status_to_dict(self) -> None:
         """Test ClimateHoldStatus to_dict conversion."""
         status = ClimateHoldStatus(
-            active=False, current_temp_celsius=25.0, target_temp_celsius=24.0, time_remaining_mins=0, mode="auto"
+            active=False,
+            current_temp_celsius=25.0,
+            target_temp_celsius=24.0,
+            time_remaining_mins=0,
+            mode="auto",
         )
         status_dict = status.to_dict()
 
@@ -472,7 +514,10 @@ class TestProtobufMessages:
         start_time = TimeOfDay(hour=22, minute=0)
         end_time = TimeOfDay(hour=6, minute=0)
         schedule = ChargingScheduleTimeWindow(
-            start_time=start_time, end_time=end_time, start_day_of_week=0, end_day_of_week=6
+            start_time=start_time,
+            end_time=end_time,
+            start_day_of_week=0,
+            end_day_of_week=6,
         )
 
         assert schedule.start_time.hour == 22
@@ -487,7 +532,10 @@ class TestProtobufMessages:
         start_time = TimeOfDay(hour=10, minute=30)
         end_time = TimeOfDay(hour=14, minute=45)
         schedule = ChargingScheduleTimeWindow(
-            start_time=start_time, end_time=end_time, start_day_of_week=1, end_day_of_week=5
+            start_time=start_time,
+            end_time=end_time,
+            start_day_of_week=1,
+            end_day_of_week=5,
         )
         schedule_dict = schedule.to_dict()
 
@@ -507,7 +555,10 @@ class TestProtobufMessages:
         start_time = TimeOfDay(hour=22, minute=0)
         end_time = TimeOfDay(hour=6, minute=0)
         schedule = ChargingScheduleTimeWindow(
-            start_time=start_time, end_time=end_time, start_day_of_week=0, end_day_of_week=6
+            start_time=start_time,
+            end_time=end_time,
+            start_day_of_week=0,
+            end_day_of_week=6,
         )
         serialized = schedule.SerializeToString()
 
@@ -702,7 +753,9 @@ class TestProtobufMessages:
 class TestRivianClassMethods:
     """Test Rivian class Parallax methods."""
 
-    async def test_send_parallax_command_success(self, aresponses: ResponsesMockServer) -> None:
+    async def test_send_parallax_command_success(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
         """Test sending a Parallax command successfully."""
         aresponses.add(
             "rivian.com",
@@ -713,17 +766,20 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
             cmd = build_charging_session_query()
-            result = await rivian.send_parallax_command("VIN123", cmd)
+            result = await rivian.send_parallax_command("VIN123", cmd, TEST_PHONE_ID)
 
+            # sendVehicleOperation returns only success flag
             assert result["success"] is True
-            assert result["sequenceNumber"] == 42
-            assert result["payload"] == "CgQIARAB"
             await rivian.close()
 
-    async def test_send_parallax_command_failure(self, aresponses: ResponsesMockServer) -> None:
+    async def test_send_parallax_command_failure(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
         """Test sending a Parallax command with failure response."""
         aresponses.add(
             "rivian.com",
@@ -734,13 +790,15 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
             cmd = build_climate_status_query()
-            result = await rivian.send_parallax_command("VIN123", cmd)
+            result = await rivian.send_parallax_command("VIN123", cmd, TEST_PHONE_ID)
 
+            # sendVehicleOperation returns only success flag
             assert result["success"] is False
-            assert result["sequenceNumber"] == 0
             await rivian.close()
 
     async def test_send_parallax_command_unauthenticated(
@@ -756,16 +814,20 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
             cmd = build_ota_status_query()
 
             with pytest.raises(RivianUnauthenticated):
-                await rivian.send_parallax_command("VIN123", cmd)
+                await rivian.send_parallax_command("VIN123", cmd, TEST_PHONE_ID)
 
             await rivian.close()
 
-    async def test_get_charging_session_live_data(self, aresponses: ResponsesMockServer) -> None:
+    async def test_get_charging_session_live_data(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
         """Test get charging session live data."""
         aresponses.add(
             "rivian.com",
@@ -776,15 +838,20 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
-            result = await rivian.get_charging_session_live_data("VIN123")
+            result = await rivian.get_charging_session_live_data(
+                "VIN123", TEST_PHONE_ID
+            )
 
             assert result["success"] is True
-            assert "payload" in result
             await rivian.close()
 
-    async def test_get_climate_hold_status(self, aresponses: ResponsesMockServer) -> None:
+    async def test_get_climate_hold_status(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
         """Test get climate hold status."""
         aresponses.add(
             "rivian.com",
@@ -795,14 +862,18 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
-            result = await rivian.get_climate_hold_status("VIN123")
+            result = await rivian.get_climate_hold_status("VIN123", TEST_PHONE_ID)
 
             assert result["success"] is True
             await rivian.close()
 
-    async def test_set_climate_hold_enabled(self, aresponses: ResponsesMockServer) -> None:
+    async def test_set_climate_hold_enabled(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
         """Test setting climate hold enabled.
 
         Validates that the Rivian client can send a climate hold command
@@ -817,14 +888,20 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
-            result = await rivian.set_climate_hold("VIN123", enabled=True, temp_celsius=22.0)
+            result = await rivian.set_climate_hold(
+                "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=22.0
+            )
 
             assert result["success"] is True
             await rivian.close()
 
-    async def test_set_climate_hold_disabled(self, aresponses: ResponsesMockServer) -> None:
+    async def test_set_climate_hold_disabled(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
         """Test setting climate hold disabled.
 
         Validates that climate hold can be disabled via Parallax protocol.
@@ -838,9 +915,13 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
-            result = await rivian.set_climate_hold("VIN123", enabled=False)
+            result = await rivian.set_climate_hold(
+                "VIN123", TEST_PHONE_ID, enabled=False
+            )
 
             assert result["success"] is True
             await rivian.close()
@@ -849,11 +930,17 @@ class TestRivianClassMethods:
         """Test setting climate hold with temperature too low."""
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
 
-            with pytest.raises(RivianBadRequestError, match="Temperature must be between 16°C and 29°C"):
-                await rivian.set_climate_hold("VIN123", enabled=True, temp_celsius=15.0)
+            with pytest.raises(
+                RivianBadRequestError, match="Temperature must be between 16°C and 29°C"
+            ):
+                await rivian.set_climate_hold(
+                    "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=15.0
+                )
 
             await rivian.close()
 
@@ -861,11 +948,17 @@ class TestRivianClassMethods:
         """Test setting climate hold with temperature too high."""
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
 
-            with pytest.raises(RivianBadRequestError, match="Temperature must be between 16°C and 29°C"):
-                await rivian.set_climate_hold("VIN123", enabled=True, temp_celsius=30.0)
+            with pytest.raises(
+                RivianBadRequestError, match="Temperature must be between 16°C and 29°C"
+            ):
+                await rivian.set_climate_hold(
+                    "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=30.0
+                )
 
             await rivian.close()
 
@@ -892,20 +985,28 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
 
             # Test minimum temperature
-            result_min = await rivian.set_climate_hold("VIN123", enabled=True, temp_celsius=16.0)
+            result_min = await rivian.set_climate_hold(
+                "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=16.0
+            )
             assert result_min["success"] is True
 
             # Test maximum temperature
-            result_max = await rivian.set_climate_hold("VIN123", enabled=True, temp_celsius=29.0)
+            result_max = await rivian.set_climate_hold(
+                "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=29.0
+            )
             assert result_max["success"] is True
 
             await rivian.close()
 
-    async def test_set_charging_schedule_valid(self, aresponses: ResponsesMockServer) -> None:
+    async def test_set_charging_schedule_valid(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
         """Test setting charging schedule with valid parameters.
 
         Validates that the Rivian client can send a charging schedule command
@@ -920,14 +1021,20 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
-            result = await rivian.set_charging_schedule("VIN123", 22, 0, 6, 0)
+            result = await rivian.set_charging_schedule(
+                "VIN123", TEST_PHONE_ID, 22, 0, 6, 0
+            )
 
             assert result["success"] is True
             await rivian.close()
 
-    async def test_set_charging_schedule_with_days(self, aresponses: ResponsesMockServer) -> None:
+    async def test_set_charging_schedule_with_days(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
         """Test setting charging schedule with specific days.
 
         Validates that charging schedules can be configured for specific
@@ -942,9 +1049,13 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
-            result = await rivian.set_charging_schedule("VIN123", 10, 30, 14, 45, start_day=1, end_day=5)
+            result = await rivian.set_charging_schedule(
+                "VIN123", TEST_PHONE_ID, 10, 30, 14, 45, start_day=1, end_day=5
+            )
 
             assert result["success"] is True
             await rivian.close()
@@ -953,16 +1064,24 @@ class TestRivianClassMethods:
         """Test setting charging schedule with invalid hours."""
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
 
             # Test start hour too high
-            with pytest.raises(RivianBadRequestError, match="Hours must be between 0 and 23"):
-                await rivian.set_charging_schedule("VIN123", 24, 0, 6, 0)
+            with pytest.raises(
+                RivianBadRequestError, match="Hours must be between 0 and 23"
+            ):
+                await rivian.set_charging_schedule("VIN123", TEST_PHONE_ID, 24, 0, 6, 0)
 
             # Test end hour negative
-            with pytest.raises(RivianBadRequestError, match="Hours must be between 0 and 23"):
-                await rivian.set_charging_schedule("VIN123", 10, 0, -1, 0)
+            with pytest.raises(
+                RivianBadRequestError, match="Hours must be between 0 and 23"
+            ):
+                await rivian.set_charging_schedule(
+                    "VIN123", TEST_PHONE_ID, 10, 0, -1, 0
+                )
 
             await rivian.close()
 
@@ -970,16 +1089,26 @@ class TestRivianClassMethods:
         """Test setting charging schedule with invalid minutes."""
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
 
             # Test start minute too high
-            with pytest.raises(RivianBadRequestError, match="Minutes must be between 0 and 59"):
-                await rivian.set_charging_schedule("VIN123", 10, 60, 14, 0)
+            with pytest.raises(
+                RivianBadRequestError, match="Minutes must be between 0 and 59"
+            ):
+                await rivian.set_charging_schedule(
+                    "VIN123", TEST_PHONE_ID, 10, 60, 14, 0
+                )
 
             # Test end minute negative
-            with pytest.raises(RivianBadRequestError, match="Minutes must be between 0 and 59"):
-                await rivian.set_charging_schedule("VIN123", 10, 0, 14, -1)
+            with pytest.raises(
+                RivianBadRequestError, match="Minutes must be between 0 and 59"
+            ):
+                await rivian.set_charging_schedule(
+                    "VIN123", TEST_PHONE_ID, 10, 0, 14, -1
+                )
 
             await rivian.close()
 
@@ -987,20 +1116,28 @@ class TestRivianClassMethods:
         """Test setting charging schedule with invalid days."""
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
 
             # Test start day too high
             with pytest.raises(
-                RivianBadRequestError, match="Days must be between 0 \\(Sunday\\) and 6 \\(Saturday\\)"
+                RivianBadRequestError,
+                match="Days must be between 0 \\(Sunday\\) and 6 \\(Saturday\\)",
             ):
-                await rivian.set_charging_schedule("VIN123", 10, 0, 14, 0, start_day=7, end_day=6)
+                await rivian.set_charging_schedule(
+                    "VIN123", TEST_PHONE_ID, 10, 0, 14, 0, start_day=7, end_day=6
+                )
 
             # Test end day negative
             with pytest.raises(
-                RivianBadRequestError, match="Days must be between 0 \\(Sunday\\) and 6 \\(Saturday\\)"
+                RivianBadRequestError,
+                match="Days must be between 0 \\(Sunday\\) and 6 \\(Saturday\\)",
             ):
-                await rivian.set_charging_schedule("VIN123", 10, 0, 14, 0, start_day=0, end_day=-1)
+                await rivian.set_charging_schedule(
+                    "VIN123", TEST_PHONE_ID, 10, 0, 14, 0, start_day=0, end_day=-1
+                )
 
             await rivian.close()
 
@@ -1027,15 +1164,21 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
 
             # Test minimum boundary values
-            result_min = await rivian.set_charging_schedule("VIN123", 0, 0, 0, 0, start_day=0, end_day=0)
+            result_min = await rivian.set_charging_schedule(
+                "VIN123", TEST_PHONE_ID, 0, 0, 0, 0, start_day=0, end_day=0
+            )
             assert result_min["success"] is True
 
             # Test maximum boundary values
-            result_max = await rivian.set_charging_schedule("VIN123", 23, 59, 23, 59, start_day=6, end_day=6)
+            result_max = await rivian.set_charging_schedule(
+                "VIN123", TEST_PHONE_ID, 23, 59, 23, 59, start_day=6, end_day=6
+            )
             assert result_max["success"] is True
 
             await rivian.close()
@@ -1051,9 +1194,11 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
-            result = await rivian.get_ota_status("VIN123")
+            result = await rivian.get_ota_status("VIN123", TEST_PHONE_ID)
 
             assert result["success"] is True
             await rivian.close()
@@ -1069,9 +1214,11 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
-            result = await rivian.get_trip_progress("VIN123")
+            result = await rivian.get_trip_progress("VIN123", TEST_PHONE_ID)
 
             assert result["success"] is True
             await rivian.close()
@@ -1092,7 +1239,9 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
 
             from rivian.parallax import build_climate_hold_command
@@ -1103,7 +1252,7 @@ class TestRivianClassMethods:
             # Verify command has non-empty payload for write operation
             assert cmd.payload_b64 != ""
 
-            result = await rivian.send_parallax_command("VIN123", cmd)
+            result = await rivian.send_parallax_command("VIN123", cmd, TEST_PHONE_ID)
             assert result["success"] is True
             await rivian.close()
 
@@ -1120,13 +1269,15 @@ class TestRivianClassMethods:
 
         async with aiohttp.ClientSession():
             rivian = Rivian(
-                csrf_token="token", app_session_token="token", user_session_token="token"
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
             )
             cmd = build_trip_progress_query()
 
             # Verify command has empty payload for read operation
             assert cmd.payload_b64 == ""
 
-            result = await rivian.send_parallax_command("VIN123", cmd)
+            result = await rivian.send_parallax_command("VIN123", cmd, TEST_PHONE_ID)
             assert result["success"] is True
             await rivian.close()

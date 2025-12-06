@@ -53,7 +53,9 @@ _LOGGER = logging.getLogger(__name__)
 GRAPHQL_BASEPATH = "https://rivian.com/api/gql"
 GRAPHQL_GATEWAY = GRAPHQL_BASEPATH + "/gateway/graphql"
 GRAPHQL_CHARGING = GRAPHQL_BASEPATH + "/chrg/user/graphql"
-GRAPHQL_VEHICLE_SERVICES = "https://rivian.com/api/vs/gql-gateway"  # Vehicle services endpoint
+GRAPHQL_VEHICLE_SERVICES = (
+    "https://rivian.com/api/vs/gql-gateway"  # Vehicle services endpoint
+)
 GRAPHQL_CONTENT = GRAPHQL_BASEPATH + "/content/graphql"  # Content/chat endpoint
 GRAPHQL_WEBSOCKET = "wss://api.rivian.com/gql-consumer-subscriptions/graphql"
 
@@ -1494,8 +1496,9 @@ class Rivian:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
             rvm_type: RVM type string (e.g., "comfort.cabin.climate_hold_setting")
             payload: Serialized protobuf payload for the operation
-            phone_id: 32-byte phone identifier from enrollment
+            phone_id: 16-byte phone identifier from enrollment (UUID bytes)
             request_id: Optional request UUID (generated if not provided)
+            operation_type: Operation type (1 = SET/write, 0 = GET/read)
 
         Returns:
             dict with 'success' (bool) key
@@ -1508,8 +1511,9 @@ class Rivian:
             >>> from rivian.proto.rivian_climate_pb2 import ClimateHoldSetting
             >>> # Get phone_id from enrollment
             >>> user_info = await client.get_user_information(include_phones=True)
-            >>> phone_id_hex = user_info["enrolledPhones"][0]["vas"]["vasPhoneId"]
-            >>> phone_id = bytes.fromhex(phone_id_hex)
+            >>> phone_id_str = user_info["enrolledPhones"][0]["vas"]["vasPhoneId"]
+            >>> import uuid
+            >>> phone_id = uuid.UUID(phone_id_str).bytes
             >>> # Build payload
             >>> setting = ClimateHoldSetting(hold_time_duration_seconds=7200)  # 2 hours
             >>> payload = setting.SerializeToString()
@@ -1536,6 +1540,9 @@ class Rivian:
         client = await self._ensure_client(GRAPHQL_GATEWAY)
         assert self._ds is not None
 
+        # Determine operation type based on payload - empty payload = GET, otherwise SET
+        op_type = 0 if not payload else 1
+
         # Build VehicleOperationRequest
         phone_info = PhoneInfo(version=1, phone_id=phone_id)
         metadata = Metadata(
@@ -1544,7 +1551,7 @@ class Rivian:
         )
         operation = Operation(
             rvm_type=rvm_type,
-            operation_type=1,  # 1 = SET operation
+            operation_type=op_type,  # 0 = GET, 1 = SET
             payload=payload,
         )
         request = VehicleOperationRequest(metadata=metadata, operation=operation)
@@ -1576,20 +1583,24 @@ class Rivian:
         return result.get("sendVehicleOperation", {})
 
     async def send_parallax_command(
-        self, vehicle_id: str, parallax_cmd: ParallaxCommand
+        self,
+        vehicle_id: str,
+        parallax_cmd: ParallaxCommand,
+        phone_id: bytes,
     ) -> dict:
-        """Send a Parallax command to a vehicle via cloud.
+        """Send a Parallax command to a vehicle via sendVehicleOperation.
 
-        Parallax is a cloud-based protocol for remote vehicle commands and
-        data retrieval. Unlike BLE commands, Parallax operates through
-        Rivian's cloud infrastructure and does not require proximity.
+        Parallax commands use the sendVehicleOperation mutation which wraps
+        the protobuf payload with phone enrollment info. This requires
+        Bluetooth pairing to have been completed.
 
         Args:
-            vehicle_id: Vehicle VIN
-            parallax_cmd: ParallaxCommand instance with encoded payload
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            parallax_cmd: ParallaxCommand instance with RVM type and payload
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
-            dict with 'success' (bool), 'sequenceNumber' (int), and 'payload' (str) keys
+            dict with 'success' (bool) key
 
         Raises:
             RivianApiException: For network or API errors
@@ -1597,142 +1608,140 @@ class Rivian:
 
         Example:
             >>> from rivian.parallax import build_climate_hold_command
-            >>> cmd = build_climate_hold_command(enabled=True, temp_celsius=22.0)
-            >>> result = await client.send_parallax_command("VIN123", cmd)
+            >>> # Get phone_id from enrollment
+            >>> user_info = await client.get_user_information(include_phones=True)
+            >>> phone_id_hex = user_info["enrolledPhones"][0]["vas"]["vasPhoneId"]
+            >>> phone_id = bytes.fromhex(phone_id_hex)
+            >>> # Send command
+            >>> cmd = build_climate_hold_command(duration_minutes=120)
+            >>> result = await client.send_parallax_command("01-276948064", cmd, phone_id)
             >>> print(f"Success: {result['success']}")
         """
-        # Ensure client is initialized
-        client = await self._ensure_client(GRAPHQL_GATEWAY)
-        assert self._ds is not None
+        import base64
 
-        # Build DSL mutation - match Android app structure exactly
-        mutation = dsl_gql(
-            DSLMutation(
-                self._ds.Mutation.sendParallaxPayload.args(
-                    payload=parallax_cmd.payload_b64,
-                    meta={
-                        "vehicleId": vehicle_id,
-                        "model": str(parallax_cmd.rvm),
-                        "isVehicleModelOp": True,
-                        "requiresWakeup": True,
-                    },
-                ).select(
-                    self._ds.ParallaxResponse.success,
-                    self._ds.ParallaxResponse.sequenceNumber,
-                )
-            )
+        # Decode the base64 payload from ParallaxCommand
+        payload = (
+            base64.b64decode(parallax_cmd.payload_b64)
+            if parallax_cmd.payload_b64
+            else b""
         )
 
-        # Execute mutation
-        # Note: Do NOT add Bearer token for Parallax calls - it causes INTERNAL_SERVER_ERROR
-        # The session-based cookies are sufficient for authentication
-        result = await self._execute_async(client, mutation, "SendRemoteCommand")
+        # Use sendVehicleOperation which wraps payload with phone info
+        return await self.send_vehicle_operation(
+            vehicle_id=vehicle_id,
+            rvm_type=str(parallax_cmd.rvm),
+            payload=payload,
+            phone_id=phone_id,
+        )
 
-        # Return response data
-        return result.get("sendParallaxPayload", {})
-
-    async def get_charging_session_live_data(self, vehicle_id: str) -> dict:
+    async def get_charging_session_live_data(
+        self, vehicle_id: str, phone_id: bytes
+    ) -> dict:
         """Get live charging session data via Parallax protocol.
 
         RVM: energy_edge_compute.graphs.charge_session_breakdown
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with charging metrics (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_charging_session_live_data("VIN123")
+            >>> data = await client.get_charging_session_live_data("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_charging_session_query
 
         cmd = build_charging_session_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_parked_energy_data(self, vehicle_id: str) -> dict:
+    async def get_parked_energy_data(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get energy consumption data while vehicle is parked.
 
         RVM: energy_edge_compute.graphs.parked_energy_distributions
 
         Args:
-            vehicle_id: Vehicle ID or VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
-            dict with success, sequenceNumber, and Base64-encoded payload
+            dict with success and Base64-encoded payload
 
         Example:
-            >>> data = await client.get_parked_energy_data("VIN123")
+            >>> data = await client.get_parked_energy_data("01-276948064", phone_id)
             >>> print(f"Total kWh consumed: {data['payload']}")
         """
         from .parallax import build_parked_energy_query
 
         cmd = build_parked_energy_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_charging_session_chart_data(self, vehicle_id: str) -> dict:
+    async def get_charging_session_chart_data(
+        self, vehicle_id: str, phone_id: bytes
+    ) -> dict:
         """Get historical charging session chart data.
 
         RVM: energy_edge_compute.graphs.charging_graph_global
 
         Args:
-            vehicle_id: Vehicle ID or VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
-            dict with success, sequenceNumber, and Base64-encoded payload
+            dict with success and Base64-encoded payload
 
         Example:
-            >>> data = await client.get_charging_session_chart_data("VIN123")
+            >>> data = await client.get_charging_session_chart_data("01-276948064", phone_id)
             >>> print(f"Chart data: {data['payload']}")
         """
         from .parallax import build_charging_chart_query
 
         cmd = build_charging_chart_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_climate_hold_status(self, vehicle_id: str) -> dict:
+    async def get_climate_hold_status(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get climate hold status via Parallax protocol.
 
         RVM: comfort.cabin.climate_hold_status
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with climate status (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_climate_hold_status("VIN123")
+            >>> data = await client.get_climate_hold_status("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_climate_status_query
 
         cmd = build_climate_status_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
     async def set_climate_hold(
         self,
         vehicle_id: str,
+        phone_id: bytes,
         enabled: bool = True,
         temp_celsius: float = 22.0,
         duration_minutes: int = 120,
-        phone_id: bytes | None = None,
     ) -> dict:
-        """Set climate hold via sendVehicleOperation (if phone_id provided) or Parallax.
+        """Set climate hold via sendVehicleOperation.
 
         RVM: comfort.cabin.climate_hold_setting
 
         Args:
-            vehicle_id: Vehicle ID (format: "01-XXXXXXXX" for sendVehicleOperation)
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
             enabled: Whether to enable climate hold (kept for API compatibility,
                     but not sent in protobuf - may be controlled elsewhere)
             temp_celsius: Target temperature in Celsius (kept for API compatibility,
                          but not sent in protobuf - may be controlled elsewhere)
             duration_minutes: Hold duration in minutes (sent in protobuf)
-            phone_id: Optional 32-byte phone ID from enrollment. If provided,
-                     uses sendVehicleOperation mutation (iOS app method).
-                     If not provided, uses sendParallaxPayload mutation (Android app method).
 
         Returns:
             dict with success status
@@ -1742,7 +1751,7 @@ class Rivian:
             hold_time_duration_seconds. The enabled state and target temperature
             may be controlled via separate GraphQL mutations or vehicle commands.
 
-        Example (sendVehicleOperation - iOS method):
+        Example:
             >>> # Get phone_id from enrollment
             >>> user_info = await client.get_user_information(include_phones=True)
             >>> phone_id_hex = user_info["enrolledPhones"][0]["vas"]["vasPhoneId"]
@@ -1750,13 +1759,9 @@ class Rivian:
             >>> # Set climate hold for 8 hours
             >>> result = await client.set_climate_hold(
             ...     vehicle_id="01-276948064",
+            ...     phone_id=phone_id,
             ...     duration_minutes=480,
-            ...     phone_id=phone_id
             ... )
-            >>> print(f"Success: {result['success']}")
-
-        Example (sendParallaxPayload - Android method):
-            >>> result = await client.set_climate_hold("VIN123", True, 22.0, 120)
             >>> print(f"Success: {result['success']}")
         """
         # Note: Temperature validation kept for API compatibility, but temp
@@ -1764,32 +1769,15 @@ class Rivian:
         if not 16.0 <= temp_celsius <= 29.0:
             raise RivianBadRequestError("Temperature must be between 16°C and 29°C")
 
-        # Convert duration to seconds for protobuf
-        duration_seconds = duration_minutes * 60
+        from .parallax import build_climate_hold_command
 
-        if phone_id is not None:
-            # Use sendVehicleOperation mutation (iOS app method)
-            from .proto.rivian_climate_pb2 import ClimateHoldSetting
-
-            setting = ClimateHoldSetting(hold_time_duration_seconds=duration_seconds)
-            payload = setting.SerializeToString()
-
-            return await self.send_vehicle_operation(
-                vehicle_id=vehicle_id,
-                rvm_type="comfort.cabin.climate_hold_setting",
-                payload=payload,
-                phone_id=phone_id,
-            )
-        else:
-            # Use sendParallaxPayload mutation (Android app method)
-            from .parallax import build_climate_hold_command
-
-            cmd = build_climate_hold_command(duration_minutes=duration_minutes)
-            return await self.send_parallax_command(vehicle_id, cmd)
+        cmd = build_climate_hold_command(duration_minutes=duration_minutes)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
     async def set_charging_schedule(
         self,
         vehicle_id: str,
+        phone_id: bytes,
         start_hour: int,
         start_minute: int,
         end_hour: int,
@@ -1802,7 +1790,8 @@ class Rivian:
         RVM: charging.schedule.time_window
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
             start_hour: Start hour (0-23)
             start_minute: Start minute (0-59)
             end_hour: End hour (0-23)
@@ -1815,7 +1804,7 @@ class Rivian:
 
         Example:
             >>> # Charge only between 10 PM and 6 AM
-            >>> result = await client.set_charging_schedule("VIN123", 22, 0, 6, 0)
+            >>> result = await client.set_charging_schedule("01-276948064", phone_id, 22, 0, 6, 0)
             >>> print(f"Success: {result['success']}")
         """
         # Validate time ranges
@@ -1833,91 +1822,96 @@ class Rivian:
         cmd = build_charging_schedule_command(
             start_hour, start_minute, end_hour, end_minute, start_day, end_day
         )
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_ota_status(self, vehicle_id: str) -> dict:
+    async def get_ota_status(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get OTA update status via Parallax protocol.
 
         RVM: ota.ota_state.vehicle_ota_state
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with OTA status (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_ota_status("VIN123")
+            >>> data = await client.get_ota_status("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_ota_status_query
 
         cmd = build_ota_status_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_trip_progress(self, vehicle_id: str) -> dict:
+    async def get_trip_progress(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get trip progress via Parallax protocol.
 
         RVM: navigation.navigation_service.trip_progress
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with trip progress (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_trip_progress("VIN123")
+            >>> data = await client.get_trip_progress("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_trip_progress_query
 
         cmd = build_trip_progress_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_trip_info(self, vehicle_id: str) -> dict:
+    async def get_trip_info(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get detailed trip information via Parallax protocol.
 
         RVM: navigation.navigation_service.trip_info
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with trip info including waypoints (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_trip_info("VIN123")
+            >>> data = await client.get_trip_info("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_trip_info_query
 
         cmd = build_trip_info_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_vehicle_wheels(self, vehicle_id: str) -> dict:
+    async def get_vehicle_wheels(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get vehicle wheels configuration via Parallax protocol.
 
         RVM: vehicle.wheels.vehicle_wheels
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with wheel configuration and tire info (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_vehicle_wheels("VIN123")
+            >>> data = await client.get_vehicle_wheels("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_vehicle_wheels_query
 
         cmd = build_vehicle_wheels_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
     async def set_cabin_ventilation(
         self,
         vehicle_id: str,
+        phone_id: bytes,
         enabled: bool,
         mode: str = "AUTO",
         windows_open_percent: int = 0,
@@ -1929,7 +1923,8 @@ class Rivian:
         RVM: comfort.cabin.cabin_ventilation_setting
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
             enabled: Whether to enable ventilation
             mode: Ventilation mode ("AUTO", "MANUAL", "OFF")
             windows_open_percent: Window opening percentage (0-100)
@@ -1944,7 +1939,7 @@ class Rivian:
 
         Example:
             >>> # Open windows 50% and sunroof 100% for 30 minutes
-            >>> result = await client.set_cabin_ventilation("VIN123", True, "MANUAL", 50, 100, 30)
+            >>> result = await client.set_cabin_ventilation("01-276948064", phone_id, True, "MANUAL", 50, 100, 30)
             >>> print(f"Success: {result['success']}")
         """
         # Validate parameters
@@ -1964,11 +1959,12 @@ class Rivian:
         cmd = build_ventilation_command(
             enabled, mode, windows_open_percent, sunroof_open_percent, duration_minutes
         )
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
     async def set_halloween_settings(
         self,
         vehicle_id: str,
+        phone_id: bytes,
         enabled: bool,
         animation_mode: str = "SPOOKY",
         brightness: int = 100,
@@ -1981,7 +1977,8 @@ class Rivian:
         RVM: holiday_celebration.mobile_vehicle_settings.halloween_celebration_settings
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
             enabled: Whether to enable Halloween light show
             animation_mode: Animation mode ("SPOOKY", "FESTIVE", "OFF")
             brightness: Brightness level (0-100)
@@ -1997,7 +1994,7 @@ class Rivian:
 
         Example:
             >>> # Enable spooky animation at 50% brightness, repeat 3 times
-            >>> result = await client.set_halloween_settings("VIN123", True, "SPOOKY", 50, 3)
+            >>> result = await client.set_halloween_settings("01-276948064", phone_id, True, "SPOOKY", 50, 3)
             >>> print(f"Success: {result['success']}")
         """
         # Validate parameters
@@ -2015,35 +2012,39 @@ class Rivian:
             motion_light_sound_enabled=enabled,
             costume_theme=animation_mode if animation_mode != "OFF" else "",
         )
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_vehicle_geofences(self, vehicle_id: str) -> dict:
+    async def get_vehicle_geofences(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get vehicle geofences via Parallax protocol.
 
         RVM: location.geofence.vehicle_geo_fences
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with geofence data (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_vehicle_geofences("VIN123")
+            >>> data = await client.get_vehicle_geofences("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_geofences_query
 
         cmd = build_geofences_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def set_vehicle_geofences(self, vehicle_id: str, fences: list[dict]) -> dict:
+    async def set_vehicle_geofences(
+        self, vehicle_id: str, phone_id: bytes, fences: list[dict]
+    ) -> dict:
         """Set vehicle geofences via Parallax protocol.
 
         RVM: location.geofence.vehicle_geo_fences
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
             fences: List of geofence definitions, each with:
                 - fence_id: Unique identifier (required)
                 - name: Human-readable name (required)
@@ -2069,7 +2070,7 @@ class Rivian:
             ...         "enabled": True,
             ...     }
             ... ]
-            >>> result = await client.set_vehicle_geofences("VIN123", fences)
+            >>> result = await client.set_vehicle_geofences("01-276948064", phone_id, fences)
             >>> print(f"Success: {result['success']}")
         """
         # Validate fences
@@ -2106,31 +2107,33 @@ class Rivian:
         from .parallax import build_geofences_command
 
         cmd = build_geofences_command(fences)
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_gear_guard_consents(self, vehicle_id: str) -> dict:
+    async def get_gear_guard_consents(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get GearGuard consent settings via Parallax protocol.
 
         RVM: security.gear_guard.consents
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with GearGuard consent settings (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_gear_guard_consents("VIN123")
+            >>> data = await client.get_gear_guard_consents("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_gear_guard_consents_query
 
         cmd = build_gear_guard_consents_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
     async def set_gear_guard_consents(
         self,
         vehicle_id: str,
+        phone_id: bytes,
         video_enabled: bool,
         audio_enabled: bool,
         cloud_storage_enabled: bool,
@@ -2142,7 +2145,8 @@ class Rivian:
         RVM: security.gear_guard.consents
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
             video_enabled: Whether video recording is enabled
             audio_enabled: Whether audio recording is enabled
             cloud_storage_enabled: Whether cloud storage is enabled
@@ -2154,7 +2158,8 @@ class Rivian:
 
         Example:
             >>> result = await client.set_gear_guard_consents(
-            ...     "VIN123",
+            ...     "01-276948064",
+            ...     phone_id,
             ...     video_enabled=True,
             ...     audio_enabled=False,
             ...     cloud_storage_enabled=True,
@@ -2166,54 +2171,64 @@ class Rivian:
 
         # build_gear_guard_consents_command only accepts consent_status
         # If all are enabled, use CONSENTED; otherwise NOT_CONSENTED
-        all_enabled = video_enabled and audio_enabled and cloud_storage_enabled and local_storage_enabled
+        all_enabled = (
+            video_enabled
+            and audio_enabled
+            and cloud_storage_enabled
+            and local_storage_enabled
+        )
         consent_status = "CONSENTED" if all_enabled else "NOT_CONSENTED"
         cmd = build_gear_guard_consents_command(consent_status=consent_status)
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_gear_guard_daily_limits(self, vehicle_id: str) -> dict:
+    async def get_gear_guard_daily_limits(
+        self, vehicle_id: str, phone_id: bytes
+    ) -> dict:
         """Get GearGuard daily usage limits via Parallax protocol.
 
         RVM: security.gear_guard.daily_limits
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with GearGuard daily limits (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_gear_guard_daily_limits("VIN123")
+            >>> data = await client.get_gear_guard_daily_limits("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_gear_guard_limits_query
 
         cmd = build_gear_guard_limits_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
-    async def get_passive_entry_status(self, vehicle_id: str) -> dict:
+    async def get_passive_entry_status(self, vehicle_id: str, phone_id: bytes) -> dict:
         """Get passive entry status via Parallax protocol.
 
         RVM: access.passive_entry.status
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
 
         Returns:
             dict with passive entry status (Base64 payload - needs protobuf parsing)
 
         Example:
-            >>> data = await client.get_passive_entry_status("VIN123")
+            >>> data = await client.get_passive_entry_status("01-276948064", phone_id)
             >>> print(f"Success: {data['success']}")
         """
         from .parallax import build_passive_entry_status_query
 
         cmd = build_passive_entry_status_query()
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
     async def set_passive_entry_settings(
         self,
         vehicle_id: str,
+        phone_id: bytes,
         enabled: bool,
         unlock_on_approach: bool = True,
         lock_on_walk_away: bool = True,
@@ -2224,7 +2239,8 @@ class Rivian:
         RVM: access.passive_entry.setting
 
         Args:
-            vehicle_id: Vehicle VIN
+            vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
+            phone_id: 32-byte phone identifier from enrollment
             enabled: Whether passive entry is enabled
             unlock_on_approach: Whether to unlock when phone approaches (default: True)
             lock_on_walk_away: Whether to lock when phone walks away (default: True)
@@ -2238,7 +2254,8 @@ class Rivian:
 
         Example:
             >>> result = await client.set_passive_entry_settings(
-            ...     "VIN123",
+            ...     "01-276948064",
+            ...     phone_id,
             ...     enabled=True,
             ...     unlock_on_approach=True,
             ...     lock_on_walk_away=True,
@@ -2261,7 +2278,7 @@ class Rivian:
         # If enabled, use a long duration; if disabled, use 0
         duration_seconds = 3600 if enabled else 0
         cmd = build_passive_entry_command(duration_seconds=duration_seconds)
-        return await self.send_parallax_command(vehicle_id, cmd)
+        return await self.send_parallax_command(vehicle_id, cmd, phone_id)
 
     async def send_location_to_vehicle(
         self,
@@ -2948,6 +2965,56 @@ class Rivian:
             _LOGGER.error(ex)
             return None
 
+    async def subscribe_for_parallax_messages(
+        self,
+        vehicle_id: str,
+        callback: Callable[[dict[str, Any]], None],
+        rvms: list[str] | None = None,
+    ) -> Callable | None:
+        """Open a web socket connection to receive Parallax message updates.
+
+        Parallax messages contain data from various Remote Vehicle Modules (RVMs)
+        such as climate hold status, passive entry settings, charging schedules, etc.
+
+        Args:
+            vehicle_id: The vehicle ID to subscribe to
+            callback: Function called when subscription data is received.
+                      Receives dict with 'payload' (Base64-encoded protobuf),
+                      'timestamp', and 'rvm' fields.
+            rvms: Optional list of RVM types to filter (e.g.,
+                  ["comfort.cabin.climate_hold_status"]).
+                  If None or empty, subscribes to all Parallax messages.
+
+        Returns:
+            Unsubscribe function or None if connection fails
+        """
+        try:
+            await self._ws_connect()
+            assert self._ws_monitor
+            async with async_timeout.timeout(self.request_timeout):
+                await self._ws_monitor.connection_ack.wait()
+
+            # Build variables - rvms is optional
+            variables: dict[str, Any] = {"vehicleId": vehicle_id}
+            if rvms:
+                variables["rvms"] = rvms
+
+            payload = {
+                "operationName": "ParallaxMessages",
+                "query": "subscription ParallaxMessages($vehicleId: String!, $rvms: [String!]) { parallaxMessages(vehicleId: $vehicleId, rvms: $rvms) { payload timestamp rvm } }",
+                "variables": variables,
+            }
+            unsubscribe = await self._ws_monitor.start_subscription(payload, callback)
+            _LOGGER.debug(
+                "Vehicle %s subscribed to Parallax messages (rvms=%s)",
+                vehicle_id,
+                rvms or "all",
+            )
+            return unsubscribe
+        except Exception as ex:  # pylint: disable=broad-except
+            _LOGGER.error(ex)
+            return None
+
     # User & Account Methods (from iOS app traffic analysis)
 
     async def get_referral_code(self) -> dict:
@@ -2972,7 +3039,13 @@ class Rivian:
         ds = DSLSchema(client.schema)
 
         query = dsl_gql(
-            DSLQuery(ds.Query.getReferralCode.select(ds.ReferralCodeResponse.code, ds.ReferralCodeResponse.url, ds.ReferralCodeResponse.referralCode))
+            DSLQuery(
+                ds.Query.getReferralCode.select(
+                    ds.ReferralCodeResponse.code,
+                    ds.ReferralCodeResponse.url,
+                    ds.ReferralCodeResponse.referralCode,
+                )
+            )
         )
 
         data = await self._execute_async(client, query)
@@ -3005,7 +3078,17 @@ class Rivian:
         ds = DSLSchema(client.schema)
 
         query = dsl_gql(
-            DSLQuery(ds.Query.getInvitationsByUser.select(ds.UserInvitation.id, ds.UserInvitation.invitedByFirstName, ds.UserInvitation.role, ds.UserInvitation.status, ds.UserInvitation.vehicleId, ds.UserInvitation.vehicleModel, ds.UserInvitation.email))
+            DSLQuery(
+                ds.Query.getInvitationsByUser.select(
+                    ds.UserInvitation.id,
+                    ds.UserInvitation.invitedByFirstName,
+                    ds.UserInvitation.role,
+                    ds.UserInvitation.status,
+                    ds.UserInvitation.vehicleId,
+                    ds.UserInvitation.vehicleModel,
+                    ds.UserInvitation.email,
+                )
+            )
         )
 
         data = await self._execute_async(client, query)
@@ -3171,9 +3254,7 @@ class Rivian:
 
     # Notification Methods
 
-    async def register_notification_tokens(
-        self, tokens: list[dict[str, str]]
-    ) -> dict:
+    async def register_notification_tokens(self, tokens: list[dict[str, str]]) -> dict:
         """Register multiple notification tokens.
 
         Args:
@@ -3262,7 +3343,9 @@ class Rivian:
             DSLMutation(
                 ds.Mutation.registerPushNotificationToken(
                     token=token, platform=platform, vehicleId=vehicle_id
-                ).select(ds.NotificationResponse.success, ds.NotificationResponse.message)
+                ).select(
+                    ds.NotificationResponse.success, ds.NotificationResponse.message
+                )
             )
         )
 
@@ -3299,7 +3382,9 @@ class Rivian:
             DSLMutation(
                 ds.Mutation.liveNotificationRegisterStartToken(
                     vehicleId=vehicle_id, token=token
-                ).select(ds.NotificationResponse.success, ds.NotificationResponse.message)
+                ).select(
+                    ds.NotificationResponse.success, ds.NotificationResponse.message
+                )
             )
         )
 

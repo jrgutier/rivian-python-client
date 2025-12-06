@@ -245,7 +245,7 @@ async def test_trip_planning(client: Rivian, vehicle_id: str) -> dict[str, bool]
                 "targetArrivalSOC": 20,
             }
 
-            print(f"   Planning trip: SF → Fresno → LA")
+            print("   Planning trip: SF → Fresno → LA")
             trip = await client.plan_trip_with_multi_stop(
                 vehicle_id, waypoints, options
             )
@@ -401,7 +401,7 @@ async def test_gear_guard(client: Rivian, vehicle_id: str) -> dict[str, bool]:
             def on_config_update(config: dict[str, Any]) -> None:
                 nonlocal received_update
                 received_update = True
-                print(f"\n   📹 Gear Guard Update:")
+                print("\n   📹 Gear Guard Update:")
                 print(f"      Enabled: {config.get('enabled')}")
                 print(f"      Video Mode: {config.get('videoMode')}")
                 print(f"      Quality: {config.get('recordingQuality')}")

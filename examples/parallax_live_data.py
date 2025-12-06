@@ -14,7 +14,6 @@ Usage:
 import asyncio
 import getpass
 import sys
-from typing import Any
 
 from rivian import Rivian
 from rivian.exceptions import RivianApiException
@@ -188,14 +187,14 @@ async def main() -> None:
             print("=== Summary ===")
             print("=" * 50)
             print(f"Vehicle: {vehicle_name}")
-            print(f"\nQuery Methods:")
+            print("\nQuery Methods:")
             print(f"  Charging session data:     {'✓' if results.get('charging_session') else '✗'}")
             print(f"  Climate hold status:       {'✓' if results.get('climate_status') else '✗'}")
             print(f"  Schedules (current):       {'✓' if results.get('schedules_current') else '✗'}")
             print(f"  Schedules (all vehicles):  {'✓' if results.get('schedules_all') else '✗'}")
 
             if "set_climate" in results or "set_schedule" in results:
-                print(f"\nCommand Methods:")
+                print("\nCommand Methods:")
                 if "set_climate" in results:
                     print(f"  Set climate hold:          {'✓' if results['set_climate'] else '✗'}")
                 if "set_schedule" in results:

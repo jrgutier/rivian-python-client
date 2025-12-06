@@ -62,7 +62,7 @@ def parse_protobuf(data: bytes, indent: int = 0) -> None:
                     print(f"{prefix}  Nested message:")
                     parse_protobuf(value, indent + 2)
         else:
-            print(f"unknown wire type")
+            print("unknown wire type")
             break
 
 print("=" * 80)
@@ -94,8 +94,8 @@ print("Looking for duration fields...")
 
 # 480 minutes = 28800 seconds
 # In protobuf varint: 28800 = 0x7080 = 10000000 11100001 = 0x80 0xE1
-print(f"\n480 minutes = 28800 seconds")
-print(f"2 hours = 120 minutes = 7200 seconds")
+print("\n480 minutes = 28800 seconds")
+print("2 hours = 120 minutes = 7200 seconds")
 
 # Find varint encoding
 def encode_varint(value: int) -> bytes:
@@ -113,8 +113,8 @@ print(f"Varint encoding of 7200 (120 min): {encode_varint(7200).hex()}")
 # Search in payloads
 print(f"\nSearching in 8 hour payload: {decoded_8hrs.hex()}")
 if encode_varint(28800) in decoded_8hrs:
-    print(f"  ✓ Found 28800 (480 minutes) encoding!")
+    print("  ✓ Found 28800 (480 minutes) encoding!")
 
 print(f"\nSearching in 2 hour payload: {decoded_2hrs.hex()}")
 if encode_varint(7200) in decoded_2hrs:
-    print(f"  ✓ Found 7200 (120 minutes) encoding!")
+    print("  ✓ Found 7200 (120 minutes) encoding!")

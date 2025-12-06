@@ -56,7 +56,9 @@ class TimeOfDay(_message.Message):
             output.extend(self._encode_field_value(2, self.minute, 0))
         return bytes(output)
 
-    def _encode_field_value(self, field_number: int, value: Any, wire_type: int) -> bytes:
+    def _encode_field_value(
+        self, field_number: int, value: Any, wire_type: int
+    ) -> bytes:
         """Encode a field value with tag.
 
         Args:
@@ -115,7 +117,9 @@ class SessionCost(_message.Message):
             output.extend(self._encode_field_value(2, self.currency, 2))
         return bytes(output)
 
-    def _encode_field_value(self, field_number: int, value: Any, wire_type: int) -> bytes:
+    def _encode_field_value(
+        self, field_number: int, value: Any, wire_type: int
+    ) -> bytes:
         """Encode a field value with tag.
 
         Args:

@@ -8,7 +8,21 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class ChargingSessionLiveData(_message.Message):
-    __slots__ = ("total_kwh", "pack_kwh", "thermal_kwh", "outlets_kwh", "system_kwh", "session_duration_mins", "time_remaining_mins", "range_added_kms", "current_power", "current_range_per_hour", "session_cost", "is_free_session", "charging_state")
+    __slots__ = (
+        "total_kwh",
+        "pack_kwh",
+        "thermal_kwh",
+        "outlets_kwh",
+        "system_kwh",
+        "session_duration_mins",
+        "time_remaining_mins",
+        "range_added_kms",
+        "current_power",
+        "current_range_per_hour",
+        "session_cost",
+        "is_free_session",
+        "charging_state",
+    )
     TOTAL_KWH_FIELD_NUMBER: _ClassVar[int]
     PACK_KWH_FIELD_NUMBER: _ClassVar[int]
     THERMAL_KWH_FIELD_NUMBER: _ClassVar[int]
@@ -35,10 +49,33 @@ class ChargingSessionLiveData(_message.Message):
     session_cost: _rivian_base_pb2.Money
     is_free_session: bool
     charging_state: int
-    def __init__(self, total_kwh: _Optional[float] = ..., pack_kwh: _Optional[float] = ..., thermal_kwh: _Optional[float] = ..., outlets_kwh: _Optional[float] = ..., system_kwh: _Optional[float] = ..., session_duration_mins: _Optional[int] = ..., time_remaining_mins: _Optional[int] = ..., range_added_kms: _Optional[int] = ..., current_power: _Optional[float] = ..., current_range_per_hour: _Optional[int] = ..., session_cost: _Optional[_Union[_rivian_base_pb2.Money, _Mapping]] = ..., is_free_session: bool = ..., charging_state: _Optional[int] = ...) -> None: ...
+    def __init__(
+        self,
+        total_kwh: _Optional[float] = ...,
+        pack_kwh: _Optional[float] = ...,
+        thermal_kwh: _Optional[float] = ...,
+        outlets_kwh: _Optional[float] = ...,
+        system_kwh: _Optional[float] = ...,
+        session_duration_mins: _Optional[int] = ...,
+        time_remaining_mins: _Optional[int] = ...,
+        range_added_kms: _Optional[int] = ...,
+        current_power: _Optional[float] = ...,
+        current_range_per_hour: _Optional[int] = ...,
+        session_cost: _Optional[_Union[_rivian_base_pb2.Money, _Mapping]] = ...,
+        is_free_session: bool = ...,
+        charging_state: _Optional[int] = ...,
+    ) -> None: ...
 
 class WindowData(_message.Message):
-    __slots__ = ("start_time", "end_time", "duration", "amps", "location", "start_day_of_week", "end_day_of_week")
+    __slots__ = (
+        "start_time",
+        "end_time",
+        "duration",
+        "amps",
+        "location",
+        "start_day_of_week",
+        "end_day_of_week",
+    )
     START_TIME_FIELD_NUMBER: _ClassVar[int]
     END_TIME_FIELD_NUMBER: _ClassVar[int]
     DURATION_FIELD_NUMBER: _ClassVar[int]
@@ -53,7 +90,16 @@ class WindowData(_message.Message):
     location: _rivian_base_pb2.Location
     start_day_of_week: int
     end_day_of_week: int
-    def __init__(self, start_time: _Optional[int] = ..., end_time: _Optional[int] = ..., duration: _Optional[int] = ..., amps: _Optional[int] = ..., location: _Optional[_Union[_rivian_base_pb2.Location, _Mapping]] = ..., start_day_of_week: _Optional[int] = ..., end_day_of_week: _Optional[int] = ...) -> None: ...
+    def __init__(
+        self,
+        start_time: _Optional[int] = ...,
+        end_time: _Optional[int] = ...,
+        duration: _Optional[int] = ...,
+        amps: _Optional[int] = ...,
+        location: _Optional[_Union[_rivian_base_pb2.Location, _Mapping]] = ...,
+        start_day_of_week: _Optional[int] = ...,
+        end_day_of_week: _Optional[int] = ...,
+    ) -> None: ...
 
 class ChargingScheduleTimeWindow(_message.Message):
     __slots__ = ("is_valid", "window_data")
@@ -61,10 +107,23 @@ class ChargingScheduleTimeWindow(_message.Message):
     WINDOW_DATA_FIELD_NUMBER: _ClassVar[int]
     is_valid: bool
     window_data: WindowData
-    def __init__(self, is_valid: bool = ..., window_data: _Optional[_Union[WindowData, _Mapping]] = ...) -> None: ...
+    def __init__(
+        self,
+        is_valid: bool = ...,
+        window_data: _Optional[_Union[WindowData, _Mapping]] = ...,
+    ) -> None: ...
 
 class ChargingSessionChartData(_message.Message):
-    __slots__ = ("session_id", "timestamps", "power_values", "soc_values", "voltage_values", "current_values", "total_energy_kwh", "duration_minutes")
+    __slots__ = (
+        "session_id",
+        "timestamps",
+        "power_values",
+        "soc_values",
+        "voltage_values",
+        "current_values",
+        "total_energy_kwh",
+        "duration_minutes",
+    )
     SESSION_ID_FIELD_NUMBER: _ClassVar[int]
     TIMESTAMPS_FIELD_NUMBER: _ClassVar[int]
     POWER_VALUES_FIELD_NUMBER: _ClassVar[int]
@@ -81,4 +140,14 @@ class ChargingSessionChartData(_message.Message):
     current_values: _containers.RepeatedScalarFieldContainer[float]
     total_energy_kwh: float
     duration_minutes: int
-    def __init__(self, session_id: _Optional[str] = ..., timestamps: _Optional[_Iterable[int]] = ..., power_values: _Optional[_Iterable[float]] = ..., soc_values: _Optional[_Iterable[float]] = ..., voltage_values: _Optional[_Iterable[float]] = ..., current_values: _Optional[_Iterable[float]] = ..., total_energy_kwh: _Optional[float] = ..., duration_minutes: _Optional[int] = ...) -> None: ...
+    def __init__(
+        self,
+        session_id: _Optional[str] = ...,
+        timestamps: _Optional[_Iterable[int]] = ...,
+        power_values: _Optional[_Iterable[float]] = ...,
+        soc_values: _Optional[_Iterable[float]] = ...,
+        voltage_values: _Optional[_Iterable[float]] = ...,
+        current_values: _Optional[_Iterable[float]] = ...,
+        total_energy_kwh: _Optional[float] = ...,
+        duration_minutes: _Optional[int] = ...,
+    ) -> None: ...

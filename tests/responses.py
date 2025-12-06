@@ -354,6 +354,7 @@ MOCK_GET_CHARGING_SCHEDULES_RESPONSE = {
     }
 }
 
+
 def error_response(
     code: str | None = None, reason: str | None = None
 ) -> dict[str, Any]:

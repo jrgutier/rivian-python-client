@@ -1,9 +1,7 @@
 """Vehicle operation Protocol Buffer messages for sendVehicleOperation mutation."""
 
-import struct
 import uuid
 from datetime import datetime
-from typing import Any
 
 from google.protobuf import message as _message
 from google.protobuf import timestamp_pb2

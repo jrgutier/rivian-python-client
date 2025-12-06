@@ -24,6 +24,7 @@ class ClimateHoldStatus(_message.Message):
         STATUS_OFF: _ClassVar[ClimateHoldStatus.Status]
         STATUS_ON: _ClassVar[ClimateHoldStatus.Status]
         STATUS_FAULT: _ClassVar[ClimateHoldStatus.Status]
+
     STATUS_UNSPECIFIED: ClimateHoldStatus.Status
     STATUS_UNAVAILABLE: ClimateHoldStatus.Status
     STATUS_OFF: ClimateHoldStatus.Status
@@ -35,15 +36,19 @@ class ClimateHoldStatus(_message.Message):
         AVAILABILITY_AVAILABLE: _ClassVar[ClimateHoldStatus.Availability]
         AVAILABILITY_CONTROLLABLE: _ClassVar[ClimateHoldStatus.Availability]
         AVAILABILITY_UNAVAILABLE: _ClassVar[ClimateHoldStatus.Availability]
+
     AVAILABILITY_UNSPECIFIED: ClimateHoldStatus.Availability
     AVAILABILITY_AVAILABLE: ClimateHoldStatus.Availability
     AVAILABILITY_CONTROLLABLE: ClimateHoldStatus.Availability
     AVAILABILITY_UNAVAILABLE: ClimateHoldStatus.Availability
     class UnavailabilityReason(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
-        UNAVAILABILITY_REASON_UNSPECIFIED: _ClassVar[ClimateHoldStatus.UnavailabilityReason]
+        UNAVAILABILITY_REASON_UNSPECIFIED: _ClassVar[
+            ClimateHoldStatus.UnavailabilityReason
+        ]
         UNAVAILABILITY_REASON_UNKNOWN: _ClassVar[ClimateHoldStatus.UnavailabilityReason]
         UNAVAILABILITY_REASON_LOW_SOC: _ClassVar[ClimateHoldStatus.UnavailabilityReason]
+
     UNAVAILABILITY_REASON_UNSPECIFIED: ClimateHoldStatus.UnavailabilityReason
     UNAVAILABILITY_REASON_UNKNOWN: ClimateHoldStatus.UnavailabilityReason
     UNAVAILABILITY_REASON_LOW_SOC: ClimateHoldStatus.UnavailabilityReason
@@ -55,10 +60,26 @@ class ClimateHoldStatus(_message.Message):
     availability: ClimateHoldStatus.Availability
     unavailability_reason: ClimateHoldStatus.UnavailabilityReason
     hold_end_time: _timestamp_pb2.Timestamp
-    def __init__(self, status: _Optional[_Union[ClimateHoldStatus.Status, str]] = ..., availability: _Optional[_Union[ClimateHoldStatus.Availability, str]] = ..., unavailability_reason: _Optional[_Union[ClimateHoldStatus.UnavailabilityReason, str]] = ..., hold_end_time: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    def __init__(
+        self,
+        status: _Optional[_Union[ClimateHoldStatus.Status, str]] = ...,
+        availability: _Optional[_Union[ClimateHoldStatus.Availability, str]] = ...,
+        unavailability_reason: _Optional[
+            _Union[ClimateHoldStatus.UnavailabilityReason, str]
+        ] = ...,
+        hold_end_time: _Optional[
+            _Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]
+        ] = ...,
+    ) -> None: ...
 
 class CabinVentilationSetting(_message.Message):
-    __slots__ = ("enabled", "mode", "windows_open_percent", "sunroof_open_percent", "duration_minutes")
+    __slots__ = (
+        "enabled",
+        "mode",
+        "windows_open_percent",
+        "sunroof_open_percent",
+        "duration_minutes",
+    )
     ENABLED_FIELD_NUMBER: _ClassVar[int]
     MODE_FIELD_NUMBER: _ClassVar[int]
     WINDOWS_OPEN_PERCENT_FIELD_NUMBER: _ClassVar[int]
@@ -69,4 +90,11 @@ class CabinVentilationSetting(_message.Message):
     windows_open_percent: int
     sunroof_open_percent: int
     duration_minutes: int
-    def __init__(self, enabled: bool = ..., mode: _Optional[str] = ..., windows_open_percent: _Optional[int] = ..., sunroof_open_percent: _Optional[int] = ..., duration_minutes: _Optional[int] = ...) -> None: ...
+    def __init__(
+        self,
+        enabled: bool = ...,
+        mode: _Optional[str] = ...,
+        windows_open_percent: _Optional[int] = ...,
+        sunroof_open_percent: _Optional[int] = ...,
+        duration_minutes: _Optional[int] = ...,
+    ) -> None: ...

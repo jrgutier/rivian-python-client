@@ -341,7 +341,9 @@ def build_geofences_command(fences: list[dict]) -> ParallaxCommand:
 
     geofence_objects = [
         Geofence(
-            type=type_map.get(f.get("type", "CUSTOM").upper(), GeofenceType.GEOFENCE_TYPE_CUSTOM),
+            type=type_map.get(
+                f.get("type", "CUSTOM").upper(), GeofenceType.GEOFENCE_TYPE_CUSTOM
+            ),
             name=f.get("name", ""),
         )
         for f in fences
@@ -366,7 +368,9 @@ def build_gear_guard_consents_query() -> ParallaxCommand:
     return ParallaxCommand(RVMType.GEAR_GUARD_CONSENTS, b"")
 
 
-def build_gear_guard_consents_command(consent_status: str = "CONSENTED") -> ParallaxCommand:
+def build_gear_guard_consents_command(
+    consent_status: str = "CONSENTED",
+) -> ParallaxCommand:
     """Build a command to set GearGuard consent settings.
 
     Args:

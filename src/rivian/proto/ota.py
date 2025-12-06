@@ -62,7 +62,9 @@ class OTAState(_message.Message):
         """
         output = bytearray()
         if self.update_available:
-            output.extend(self._encode_field_value(1, 1 if self.update_available else 0, 0))
+            output.extend(
+                self._encode_field_value(1, 1 if self.update_available else 0, 0)
+            )
         if self.current_version:
             output.extend(self._encode_field_value(2, self.current_version, 2))
         if self.available_version:
@@ -73,7 +75,9 @@ class OTAState(_message.Message):
             output.extend(self._encode_field_value(5, self.install_state, 2))
         return bytes(output)
 
-    def _encode_field_value(self, field_number: int, value: Any, wire_type: int) -> bytes:
+    def _encode_field_value(
+        self, field_number: int, value: Any, wire_type: int
+    ) -> bytes:
         """Encode a field value with tag.
 
         Args:

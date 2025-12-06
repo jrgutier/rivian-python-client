@@ -20,7 +20,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from rivian import Rivian
-from rivian.exceptions import RivianApiException, RivianBadRequestError
+from rivian.exceptions import RivianApiException
 
 
 def print_section(title: str) -> None:
@@ -300,7 +300,7 @@ async def main() -> None:
             refresh_token=refresh_token,
             user_session_token=user_session_token,
         ) as client:
-            print(f"✓ Client initialized")
+            print("✓ Client initialized")
             print(f"✓ Vehicle ID: {vehicle_id}")
             print(f"✓ Testing category: {category}\n")
 

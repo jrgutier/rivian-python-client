@@ -68,7 +68,7 @@ def parse_protobuf(data: bytes, indent: int = 0) -> None:
                     except:
                         pass
         else:
-            print(f"unknown wire type")
+            print("unknown wire type")
             break
 
 
