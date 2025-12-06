@@ -1,0 +1,108 @@
+name: Pre-Release Build
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - dev-*
+  workflow_dispatch:
+
+jobs:
+  build_and_release:
+    name: Build and create pre-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Poetry
+        uses: abatilo/actions-poetry@v2
+
+      - name: Install poetry-dynamic-versioning
+        run: pip install poetry-dynamic-versioning[plugin]
+
+      - name: Get current version from pyproject.toml
+        id: current_version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "base_version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Base version: $VERSION"
+
+      - name: Get latest tag and calculate next version
+        id: next_version
+        run: |
+          BASE="${{ steps.current_version.outputs.base_version }}"
+
+          # Get the latest tag matching the pattern vX.Y.Z or vX.Y.Z-beta.N
+          LATEST_TAG=$(git tag -l "v${BASE}*" --sort=-v:refname | head -1 || echo "")
+
+          if [ -z "$LATEST_TAG" ]; then
+            # No tags for this version, start at beta.1
+            NEXT_VERSION="${BASE}-beta.1"
+          elif [[ "$LATEST_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta\.([0-9]+)$ ]]; then
+            # Has beta suffix, increment it
+            TAG_BASE="${BASH_REMATCH[1]}"
+            BETA_NUM="${BASH_REMATCH[2]}"
+            NEXT_BETA=$((BETA_NUM + 1))
+            NEXT_VERSION="${TAG_BASE}-beta.${NEXT_BETA}"
+          elif [[ "$LATEST_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            # Stable release exists, start new beta series
+            NEXT_VERSION="${BASE}-beta.1"
+          else
+            NEXT_VERSION="${BASE}-beta.1"
+          fi
+
+          echo "next_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "next_tag=v$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "Next version: $NEXT_VERSION (tag: v$NEXT_VERSION)"
+
+      - name: Create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.next_version.outputs.next_tag }}"
+          git push origin "${{ steps.next_version.outputs.next_tag }}"
+
+      - name: Build package with dynamic version
+        run: |
+          poetry build
+          ls -la dist/
+
+      - name: Create pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.next_version.outputs.next_tag }}
+          name: "Pre-release ${{ steps.next_version.outputs.next_version }}"
+          body: |
+            ## Pre-release Build
+
+            **Version:** ${{ steps.next_version.outputs.next_version }}
+            **Branch:** ${{ github.ref_name }}
+            **Commit:** ${{ github.sha }}
+
+            ⚠️ This is an automated pre-release build. Use at your own risk.
+
+            ### Installation
+
+            ```bash
+            pip install rivian-python-client==${{ steps.next_version.outputs.next_version }}
+            ```
+
+            Or install directly from git:
+            ```bash
+            pip install git+https://github.com/jrgutier/rivian-python-client.git@${{ steps.next_version.outputs.next_tag }}
+            ```
+          files: |
+            dist/*
+          prerelease: true
+          generate_release_notes: true
