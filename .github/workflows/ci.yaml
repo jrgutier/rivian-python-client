@@ -3,9 +3,11 @@ on:
   push:
     branches:
       - main
+      - vendor-client
   pull_request:
     branches:
       - main
+      - vendor-client
 
 jobs:
   build:
@@ -31,5 +33,11 @@ jobs:
           poetry run ruff format . --check
       - name: Run mypy
         run: poetry run mypy src/rivian
+      # No --cov here: pytest-cov is not in pyproject.toml's dev group and is not a
+      # locked package, so coverage flags would fail with "unrecognized arguments"
+      # (pytest exit 4) before a single test ran. Adding the dependency also needs a
+      # regenerated poetry.lock, which cannot be produced right now — the local poetry
+      # is itself broken by the same removed Homebrew python@3.13 that broke the venv.
+      # Client-side coverage belongs with the uv/hatchling migration in s03.
       - name: Run tests with poetry and pytest
         run: poetry run pytest
