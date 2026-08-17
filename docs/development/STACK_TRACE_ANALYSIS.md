@@ -54,12 +54,9 @@
 **Stack Trace:**
 ```python
 gql.transport.exceptions.TransportQueryError: {
-  'extensions': {
-    'code': 'INTERNAL_SERVER_ERROR',
-    'reason': 'INTERNAL_SERVER_ERROR'
-  },
-  'message': 'Unexpected error occurred',
-  'path': ['sendParallaxPayload']
+    "extensions": {"code": "INTERNAL_SERVER_ERROR", "reason": "INTERNAL_SERVER_ERROR"},
+    "message": "Unexpected error occurred",
+    "path": ["sendParallaxPayload"],
 }
 ```
 
@@ -74,11 +71,9 @@ gql.transport.exceptions.TransportQueryError: {
 **Stack Trace:**
 ```python
 gql.transport.exceptions.TransportQueryError: {
-  'extensions': {
-    'code': 'OMS_ERROR'
-  },
-  'message': 'See server logs for error details',
-  'path': ['sendParallaxPayload']
+    "extensions": {"code": "OMS_ERROR"},
+    "message": "See server logs for error details",
+    "path": ["sendParallaxPayload"],
 }
 ```
 

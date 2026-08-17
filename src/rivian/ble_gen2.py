@@ -118,7 +118,7 @@ def derive_ecdh_shared_secret(private_key: str, vehicle_public_key: str) -> byte
     )
 
     if not isinstance(private_key_obj, ec.EllipticCurvePrivateKey):
-        raise ValueError("Private key must be an EC private key")
+        raise ValueError("Private key must be an EC private key")  # noqa: TRY004  # BLE pairing state machine; changing exception semantics here is out of scope for a transport merge
 
     # Parse vehicle's public key (uncompressed point format: 04 || X || Y)
     vehicle_pub_bytes = bytes.fromhex(vehicle_public_key)
@@ -271,7 +271,7 @@ async def pair_phone_gen2(
                     private_key, vehicle_public_key
                 )
                 _LOGGER.debug("ECDH shared secret derived (32 bytes)")
-            except Exception as ex:
+            except Exception as ex:  # noqa: BLE001  # BLE pairing state machine; changing exception semantics here is out of scope for a transport merge
                 _LOGGER.error("Failed to derive ECDH shared secret: %s", ex)
                 return False
 
@@ -320,11 +320,9 @@ async def pair_phone_gen2(
                 _LOGGER.error("Authentication failed: empty response")
                 return False
 
-    except Exception as ex:
-        _LOGGER.error(
-            "Gen 2 pairing failed at state %s: %s",
+    except Exception:
+        _LOGGER.exception(
+            "Gen 2 pairing failed at state %s",
             AuthState(state).name,
-            ex,
-            exc_info=True,
         )
         return False

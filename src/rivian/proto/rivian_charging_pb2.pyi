@@ -35,7 +35,7 @@ class ChargingSessionLiveData(_message.Message):
     session_cost: _rivian_base_pb2.Money
     is_free_session: bool
     charging_state: int
-    def __init__(self, total_kwh: _Optional[float] = ..., pack_kwh: _Optional[float] = ..., thermal_kwh: _Optional[float] = ..., outlets_kwh: _Optional[float] = ..., system_kwh: _Optional[float] = ..., session_duration_mins: _Optional[int] = ..., time_remaining_mins: _Optional[int] = ..., range_added_kms: _Optional[int] = ..., current_power: _Optional[float] = ..., current_range_per_hour: _Optional[int] = ..., session_cost: _Optional[_Union[_rivian_base_pb2.Money, _Mapping]] = ..., is_free_session: bool = ..., charging_state: _Optional[int] = ...) -> None: ...
+    def __init__(self, total_kwh: _Optional[float] = ..., pack_kwh: _Optional[float] = ..., thermal_kwh: _Optional[float] = ..., outlets_kwh: _Optional[float] = ..., system_kwh: _Optional[float] = ..., session_duration_mins: _Optional[int] = ..., time_remaining_mins: _Optional[int] = ..., range_added_kms: _Optional[int] = ..., current_power: _Optional[float] = ..., current_range_per_hour: _Optional[int] = ..., session_cost: _Optional[_Union[_rivian_base_pb2.Money, _Mapping]] = ..., is_free_session: _Optional[bool] = ..., charging_state: _Optional[int] = ...) -> None: ...
 
 class WindowData(_message.Message):
     __slots__ = ("start_time", "end_time", "duration", "amps", "location", "start_day_of_week", "end_day_of_week")
@@ -61,7 +61,7 @@ class ChargingScheduleTimeWindow(_message.Message):
     WINDOW_DATA_FIELD_NUMBER: _ClassVar[int]
     is_valid: bool
     window_data: WindowData
-    def __init__(self, is_valid: bool = ..., window_data: _Optional[_Union[WindowData, _Mapping]] = ...) -> None: ...
+    def __init__(self, is_valid: _Optional[bool] = ..., window_data: _Optional[_Union[WindowData, _Mapping]] = ...) -> None: ...
 
 class ChargingSessionChartData(_message.Message):
     __slots__ = ("session_id", "timestamps", "power_values", "soc_values", "voltage_values", "current_values", "total_energy_kwh", "duration_minutes")

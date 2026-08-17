@@ -49,8 +49,12 @@ class RVMType(StrEnum):
     OTA_STATE = "ota.ota_state.vehicle_ota_state"
 
     # GearGuard
-    GEAR_GUARD_CONSENTS = "gearguard_streaming.privacy.gearguard_streaming_in_vehicle_consent"
-    GEAR_GUARD_DAILY_LIMITS = "gearguard_streaming.privacy.gearguard_streaming_daily_limit"
+    GEAR_GUARD_CONSENTS = (
+        "gearguard_streaming.privacy.gearguard_streaming_in_vehicle_consent"
+    )
+    GEAR_GUARD_DAILY_LIMITS = (
+        "gearguard_streaming.privacy.gearguard_streaming_daily_limit"
+    )
 
     # Vehicle
     VEHICLE_WHEELS = "vehicle.wheels.vehicle_wheels"
@@ -69,7 +73,9 @@ class RVMType(StrEnum):
     PASSIVE_ENTRY_STATUS = "vehicle_access.state.passive_entry"
 
     # Holiday Celebrations
-    HALLOWEEN_SETTINGS = "holiday_celebration.mobile_vehicle_settings.halloween_celebration_settings"
+    HALLOWEEN_SETTINGS = (
+        "holiday_celebration.mobile_vehicle_settings.halloween_celebration_settings"
+    )
 ```
 
 ### Protobuf Example (Climate Hold)

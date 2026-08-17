@@ -158,11 +158,11 @@ Phone                                 Vehicle
 ```python
 # HMAC Input Buffer Composition:
 hmac_input = (
-    protobuf_bytes +           # Serialized protobuf message
-    csn_bytes +                # 4-byte Command Sequence Number (big-endian)
-    phone_id_bytes +           # 16-byte phone UUID (big-endian)
-    phone_nonce_bytes +        # 16-byte phone nonce
-    vehicle_nonce_bytes        # 16-byte vehicle nonce
+    protobuf_bytes  # Serialized protobuf message
+    + csn_bytes  # 4-byte Command Sequence Number (big-endian)
+    + phone_id_bytes  # 16-byte phone UUID (big-endian)
+    + phone_nonce_bytes  # 16-byte phone nonce
+    + vehicle_nonce_bytes  # 16-byte vehicle nonce
 )
 
 # HMAC Key: 32-byte ECDH shared secret
@@ -290,19 +290,19 @@ async with Rivian() as client:
 
     # Generate key pair
     from rivian.utils import generate_key_pair
+
     public_key_pem, private_key_pem = generate_key_pair()
 
     # Enroll phone
     success = await client.enroll_phone(
-        public_key=public_key_pem,
-        device_name="My Phone"
+        public_key=public_key_pem, device_name="My Phone"
     )
 
 # 2. Pair via BLE (automatic generation detection)
 success = await pair_phone(
     phone_id="your-phone-uuid",
     private_key_pem=private_key_pem,
-    vehicle_id="your-vehicle-uuid"
+    vehicle_id="your-vehicle-uuid",
 )
 ```
 

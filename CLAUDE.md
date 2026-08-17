@@ -272,6 +272,7 @@ async def get_something(vehicle_id: str) -> dict:
     cmd = ParallaxCommand(RVMType.SOMETHING, b"")
     return await self.send_parallax_command(vehicle_id, cmd)
 
+
 # Write operation (command with protobuf message)
 async def set_something(vehicle_id: str, value: Any) -> dict:
     """Send command to vehicle."""
@@ -294,6 +295,7 @@ async def set_something(vehicle_id: str, value: Any) -> dict:
 2. **Create Protobuf Message** (`src/rivian/proto/new_module.py`):
    ```python
    from google.protobuf import message as _message
+
 
    class NewFeatureSetting(_message.Message):
        """New feature setting.
@@ -356,14 +358,20 @@ async def set_something(vehicle_id: str, value: Any) -> dict:
        assert cmd.rvm == RVMType.NEW_FEATURE_SETTING
        assert isinstance(cmd.payload_b64, str)
 
+
    async def test_set_new_feature(self, aresponses: ResponsesMockServer):
        """Test setting new feature."""
-       aresponses.add("rivian.com", "/api/gql/gateway/graphql", "POST",
-                      response=PARALLAX_SUCCESS_RESPONSE)
+       aresponses.add(
+           "rivian.com",
+           "/api/gql/gateway/graphql",
+           "POST",
+           response=PARALLAX_SUCCESS_RESPONSE,
+       )
 
        async with aiohttp.ClientSession():
-           rivian = Rivian(csrf_token="token", app_session_token="token",
-                          user_session_token="token")
+           rivian = Rivian(
+               csrf_token="token", app_session_token="token", user_session_token="token"
+           )
            result = await rivian.set_new_feature("VIN123", "test", 123)
            assert result["success"] is True
            await rivian.close()
@@ -509,11 +517,15 @@ mutation = dsl_gql(
     DSLMutation(
         self._ds.Mutation.login.args(email=username, password=password).select(
             # Use inline fragments for each union member
-            DSLInlineFragment().on(self._ds.MobileLoginResponse).select(
+            DSLInlineFragment()
+            .on(self._ds.MobileLoginResponse)
+            .select(
                 self._ds.MobileLoginResponse.accessToken,
                 self._ds.MobileLoginResponse.refreshToken,
             ),
-            DSLInlineFragment().on(self._ds.MobileMFALoginResponse).select(
+            DSLInlineFragment()
+            .on(self._ds.MobileMFALoginResponse)
+            .select(
                 self._ds.MobileMFALoginResponse.otpToken,
             ),
         )
@@ -530,7 +542,7 @@ The `_handle_gql_error()` method converts gql `TransportQueryError` exceptions t
 ```python
 def _handle_gql_error(self, exception: TransportQueryError) -> None:
     """Convert gql errors to Rivian exceptions."""
-    errors = exception.errors if hasattr(exception, 'errors') else []
+    errors = exception.errors if hasattr(exception, "errors") else []
 
     for error in errors:
         if isinstance(error, dict) and (extensions := error.get("extensions")):

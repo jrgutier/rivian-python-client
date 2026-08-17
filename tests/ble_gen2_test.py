@@ -9,11 +9,7 @@ from rivian.ble_gen2_proto import VASMessage
 
 # Try to import BLE functions, skip tests if not available
 try:
-    from rivian.ble_gen2 import (
-        AuthState,
-        compute_gen2_hmac,
-        derive_ecdh_shared_secret,
-    )
+    from rivian.ble_gen2 import AuthState, compute_gen2_hmac, derive_ecdh_shared_secret
 
     HAS_BLE = True
 except ImportError:

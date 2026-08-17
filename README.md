@@ -53,12 +53,12 @@ async with Rivian() as client:
 # Get user info with vehicles (v2.0+ returns dict directly)
 user_info = await client.get_user_information()
 print(f"User ID: {user_info['id']}")
-for vehicle in user_info['vehicles']:
+for vehicle in user_info["vehicles"]:
     print(f"Vehicle: {vehicle['name']} ({vehicle['vin']})")
 
 # Include enrolled phones
 user_info = await client.get_user_information(include_phones=True)
-for phone in user_info.get('enrolledPhones', []):
+for phone in user_info.get("enrolledPhones", []):
     print(f"Phone ID: {phone['vas']['vasPhoneId']}")
 ```
 
@@ -68,12 +68,12 @@ for phone in user_info.get('enrolledPhones', []):
 # Get drivers and keys for a vehicle
 drivers = await client.get_drivers_and_keys(vehicle_id)
 print(f"VIN: {drivers['vin']}")
-for user in drivers['invitedUsers']:
+for user in drivers["invitedUsers"]:
     print(f"User: {user.get('email')} - Devices: {len(user.get('devices', []))}")
 
 # Get vehicle images
 images = await client.get_vehicle_images(extension="png", resolution="@2x")
-for img in images['getVehicleMobileImages']:
+for img in images["getVehicleMobileImages"]:
     print(f"Image: {img['url']}")
 ```
 
@@ -93,8 +93,7 @@ from rivian.const import VEHICLE_STATE_PROPERTIES
 
 # Subscribe to vehicle state updates
 async for update in client.subscribe_for_vehicle_updates(
-    vehicle_id=vehicle_id,
-    properties=VEHICLE_STATE_PROPERTIES
+    vehicle_id=vehicle_id, properties=VEHICLE_STATE_PROPERTIES
 ):
     print(f"Battery: {update['batteryLevel']['value']}%")
     print(f"Range: {update['distanceToEmpty']['value']} miles")
@@ -107,14 +106,13 @@ from rivian import VehicleCommand
 
 # Unlock vehicle
 command_id = await client.send_vehicle_command(
-    vehicle_id=vehicle_id,
-    command=VehicleCommand.UNLOCK_ALL_CLOSURES
+    vehicle_id=vehicle_id, command=VehicleCommand.UNLOCK_ALL_CLOSURES
 )
 
 # Monitor command status via WebSocket
 async for state in client.subscribe_for_command_state(command_id):
     print(f"Command state: {state['state']}")
-    if state['state'] in ['COMPLETE', 'FAILED']:
+    if state["state"] in ["COMPLETE", "FAILED"]:
         break
 ```
 
@@ -139,7 +137,7 @@ Parallax is Rivian's cloud-based protocol for remote vehicle commands and data r
 ```python
 # Get live charging session data
 data = await client.get_charging_session_live_data(vehicle_id)
-if data['success']:
+if data["success"]:
     # Payload contains Base64-encoded protobuf
     print(f"Charging payload: {data['payload']}")
 ```
@@ -149,10 +147,7 @@ if data['success']:
 ```python
 # Enable climate hold at 22°C for 2 hours
 result = await client.set_climate_hold(
-    vehicle_id=vehicle_id,
-    enabled=True,
-    temp_celsius=22.0,
-    duration_minutes=120
+    vehicle_id=vehicle_id, enabled=True, temp_celsius=22.0, duration_minutes=120
 )
 print(f"Climate set: {result['success']}")
 
@@ -166,11 +161,7 @@ print(f"Climate active: {status['success']}")
 ```python
 # Charge only between 10 PM and 6 AM
 result = await client.set_charging_schedule(
-    vehicle_id=vehicle_id,
-    start_hour=22,
-    start_minute=0,
-    end_hour=6,
-    end_minute=0
+    vehicle_id=vehicle_id, start_hour=22, start_minute=0, end_hour=6, end_minute=0
 )
 print(f"Schedule set: {result['success']}")
 ```
@@ -233,7 +224,7 @@ for user in users:
 # Register multiple notification tokens
 tokens = [
     {"token": "ios_token_1", "platform": "ios", "deviceId": "device1"},
-    {"token": "android_token_1", "platform": "android", "deviceId": "device2"}
+    {"token": "android_token_1", "platform": "android", "deviceId": "device2"},
 ]
 result = await client.register_notification_tokens(tokens)
 print(f"Registered {len(result['registeredTokens'])} tokens")
@@ -260,7 +251,7 @@ print(f"Chat session {session['sessionId']}: {session['status']}")
 ```python
 # Get charging schedules
 schedules = await client.get_charging_schedules(vehicle_id)
-for schedule in schedules['schedules']:
+for schedule in schedules["schedules"]:
     print(f"{schedule['name']}: {schedule['departureTime']} on {schedule['days']}")
 
 # Create/update departure schedule
@@ -273,8 +264,8 @@ schedule = await client.update_departure_schedule(
         "departureTime": "08:00",
         "cabinPreconditioning": True,
         "cabinPreconditioningTemp": 21.0,
-        "targetSOC": 80
-    }
+        "targetSOC": 80,
+    },
 )
 
 # Enable/disable smart charging
@@ -287,15 +278,12 @@ await client.unenroll_from_smart_charging(vehicle_id)
 ```python
 # Share GPS coordinates
 result = await client.share_location_to_vehicle(
-    vehicle_id=vehicle_id,
-    latitude=37.7749,
-    longitude=-122.4194
+    vehicle_id=vehicle_id, latitude=37.7749, longitude=-122.4194
 )
 
 # Share Google Place
 result = await client.share_place_id_to_vehicle(
-    vehicle_id=vehicle_id,
-    place_id="ChIJN1t_tDeuEmsRUsoyG83frY4"
+    vehicle_id=vehicle_id, place_id="ChIJN1t_tDeuEmsRUsoyG83frY4"
 )
 ```
 
@@ -307,15 +295,12 @@ trip = await client.plan_trip_with_multi_stop(
     vehicle_id=vehicle_id,
     waypoints=[
         {"latitude": 37.7749, "longitude": -122.4194, "name": "San Francisco"},
-        {"latitude": 34.0522, "longitude": -118.2437, "name": "Los Angeles"}
+        {"latitude": 34.0522, "longitude": -118.2437, "name": "Los Angeles"},
     ],
-    options={
-        "avoidTolls": False,
-        "targetArrivalSOC": 20
-    }
+    options={"avoidTolls": False, "targetArrivalSOC": 20},
 )
 print(f"Trip: {trip['totalDistance']} miles, {trip['totalDuration']} minutes")
-for stop in trip['chargingStops']:
+for stop in trip["chargingStops"]:
     print(f"Charging stop: {stop['location']['name']}")
 ```
 
@@ -337,6 +322,7 @@ await client.update_pin_to_gear(vehicle_id, trailer_id, pinned=True)
 # Subscribe to Gear Guard config updates
 def on_config_update(config):
     print(f"Gear Guard: {config['videoMode']}, storage={config['storageRemaining']}%")
+
 
 unsubscribe = await client.subscribe_for_gear_guard_config(vehicle_id, on_config_update)
 ```
@@ -401,54 +387,50 @@ Methods that still return `ClientResponse` (unchanged):
 
 ## Dependencies
 
-[Poetry](https://python-poetry.org/docs/) is used for dependency management.
+[uv](https://docs.astral.sh/uv/)
 
-```bash
-curl -sSL https://install.python-poetry.org | python3 -
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ## Development Setup
 
-Install project dependencies into the poetry virtual environment and setup pre-commit hooks:
+Install project dependencies into the uv virtual environment and run pre-commit
 
-```bash
-poetry install
+```
+uv sync --all-extras
 pre-commit install
 ```
 
 ### With BLE Support
 
 ```bash
-poetry install --extras ble
+uv sync --all-extras
 ```
-
-## Running Tests
-
-```bash
-poetry run pytest
+uv run pytest
 ```
 
 ### Run Specific Tests
 
 ```bash
 # Specific test file
-poetry run pytest tests/rivian_test.py
+uv run pytest tests/rivian_test.py
 
 # Specific test function
-poetry run pytest tests/rivian_test.py::test_authentication
+uv run pytest tests/rivian_test.py::test_authentication
 ```
 
 ## Linting & Formatting
 
 ```bash
 # Run ruff linter with auto-fix
-poetry run ruff check --fix
+uv run ruff check --fix
 
 # Run ruff formatter
-poetry run ruff format
+uv run ruff format
 
 # Run type checking
-poetry run mypy src/rivian
+uv run mypy src/rivian
 ```
 
 Pre-commit hooks automatically run `ruff` (linter with --fix) and `ruff-format` on staged files.

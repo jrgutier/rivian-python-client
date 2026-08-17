@@ -149,9 +149,11 @@ Add support for the `vs/gql-gateway` endpoint:
 ```python
 GRAPHQL_VEHICLE_SERVICES = "https://rivian.com/api/vs/gql-gateway"
 
+
 async def get_service_appointments(self, vehicle_id: str) -> list[dict]:
     """Get scheduled service appointments for vehicle."""
     # Implementation using vehicle services endpoint
+
 
 async def get_active_service_requests(self, vehicle_id: str) -> list[dict]:
     """Get active service requests and their status."""
@@ -190,9 +192,11 @@ async def get_referral_code(self) -> dict:
     """Get user's referral code and shareable URL."""
     # Returns: {"code": "ABC123", "url": "https://..."}
 
+
 async def get_invitations_by_user(self) -> list[dict]:
     """Get vehicle share invitations received by user."""
     # Returns list of vehicle invitations
+
 
 async def get_vehicle_provisioned_users(self, vehicle_id: str) -> list[dict]:
     """Get all users provisioned for vehicle access."""
@@ -240,14 +244,14 @@ async def register_notification_tokens(self, tokens: list[dict]) -> dict:
     """Register multiple push notification tokens."""
     # tokens: [{"token": "...", "platform": "ios", "deviceId": "..."}]
 
+
 async def register_push_notification_token(
     self, token: str, platform: str, vehicle_id: str
 ) -> dict:
     """Register single push notification token."""
 
-async def register_live_notification_token(
-    self, vehicle_id: str, token: str
-) -> dict:
+
+async def register_live_notification_token(self, vehicle_id: str, token: str) -> dict:
     """Register live notification start token."""
 ```
 
@@ -281,6 +285,7 @@ Add support for chat/support features:
 
 ```python
 GRAPHQL_CONTENT = "https://rivian.com/api/gql/content/graphql"
+
 
 async def get_chat_session(self, vehicle_id: str) -> dict:
     """Get customer support chat session information."""

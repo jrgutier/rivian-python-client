@@ -31,7 +31,7 @@ class Wheel(_message.Message):
     timestamp: _timestamp_pb2.Timestamp
     tires: int
     current_odometer_meters: int
-    def __init__(self, wheel_package: _Optional[int] = ..., tire_odometer_mileage_meters: _Optional[int] = ..., saved_tire_odometer_mileage_delta_meters: _Optional[int] = ..., odometer_at_last_rotation_meters: _Optional[int] = ..., saved_odometer_at_last_rotation_delta_meters: _Optional[int] = ..., rotation_reminder_interval_meters: _Optional[int] = ..., is_installed: bool = ..., timestamp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., tires: _Optional[int] = ..., current_odometer_meters: _Optional[int] = ...) -> None: ...
+    def __init__(self, wheel_package: _Optional[int] = ..., tire_odometer_mileage_meters: _Optional[int] = ..., saved_tire_odometer_mileage_delta_meters: _Optional[int] = ..., odometer_at_last_rotation_meters: _Optional[int] = ..., saved_odometer_at_last_rotation_delta_meters: _Optional[int] = ..., rotation_reminder_interval_meters: _Optional[int] = ..., is_installed: _Optional[bool] = ..., timestamp: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., tires: _Optional[int] = ..., current_odometer_meters: _Optional[int] = ...) -> None: ...
 
 class VehicleWheels(_message.Message):
     __slots__ = ("wheels_list",)
@@ -69,7 +69,7 @@ class OtaSchedule(_message.Message):
     is_enabled: bool
     repeats_daily: OtaRepeatsDaily
     single_occurrence: OtaSingleOccurrence
-    def __init__(self, id: _Optional[str] = ..., is_enabled: bool = ..., repeats_daily: _Optional[_Union[OtaRepeatsDaily, _Mapping]] = ..., single_occurrence: _Optional[_Union[OtaSingleOccurrence, _Mapping]] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., is_enabled: _Optional[bool] = ..., repeats_daily: _Optional[_Union[OtaRepeatsDaily, _Mapping]] = ..., single_occurrence: _Optional[_Union[OtaSingleOccurrence, _Mapping]] = ...) -> None: ...
 
 class OtaConfig(_message.Message):
     __slots__ = ("schedules", "timestamp")
@@ -83,7 +83,7 @@ class BoolValue(_message.Message):
     __slots__ = ("value",)
     VALUE_FIELD_NUMBER: _ClassVar[int]
     value: bool
-    def __init__(self, value: bool = ...) -> None: ...
+    def __init__(self, value: _Optional[bool] = ...) -> None: ...
 
 class Int32Value(_message.Message):
     __slots__ = ("value",)
@@ -131,4 +131,4 @@ class HalloweenCelebrationSettings(_message.Message):
     lights_color: StringValue
     car_costume_availability: StringValue
     motion_light_sound_enabled: bool
-    def __init__(self, costume_theme: _Optional[_Union[HalloweenCostumeTheme, _Mapping]] = ..., celebration_sound_volume: _Optional[_Union[Int32Value, _Mapping]] = ..., music_enabled: _Optional[_Union[BoolValue, _Mapping]] = ..., music_type: _Optional[_Union[StringValue, _Mapping]] = ..., sound_effect: _Optional[_Union[StringValue, _Mapping]] = ..., exterior_sound_effect: _Optional[int] = ..., exterior_sounds_muted: _Optional[_Union[BoolValue, _Mapping]] = ..., light_show_enabled: _Optional[_Union[BoolValue, _Mapping]] = ..., interior_overhead_lights_enabled: _Optional[_Union[BoolValue, _Mapping]] = ..., exterior_light_show_enabled: _Optional[_Union[BoolValue, _Mapping]] = ..., lights_color: _Optional[_Union[StringValue, _Mapping]] = ..., car_costume_availability: _Optional[_Union[StringValue, _Mapping]] = ..., motion_light_sound_enabled: bool = ...) -> None: ...
+    def __init__(self, costume_theme: _Optional[_Union[HalloweenCostumeTheme, _Mapping]] = ..., celebration_sound_volume: _Optional[_Union[Int32Value, _Mapping]] = ..., music_enabled: _Optional[_Union[BoolValue, _Mapping]] = ..., music_type: _Optional[_Union[StringValue, _Mapping]] = ..., sound_effect: _Optional[_Union[StringValue, _Mapping]] = ..., exterior_sound_effect: _Optional[int] = ..., exterior_sounds_muted: _Optional[_Union[BoolValue, _Mapping]] = ..., light_show_enabled: _Optional[_Union[BoolValue, _Mapping]] = ..., interior_overhead_lights_enabled: _Optional[_Union[BoolValue, _Mapping]] = ..., exterior_light_show_enabled: _Optional[_Union[BoolValue, _Mapping]] = ..., lights_color: _Optional[_Union[StringValue, _Mapping]] = ..., car_costume_availability: _Optional[_Union[StringValue, _Mapping]] = ..., motion_light_sound_enabled: _Optional[bool] = ...) -> None: ...

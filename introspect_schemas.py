@@ -8,9 +8,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from rivian import Rivian
-from rivian.rivian import GRAPHQL_GATEWAY, GRAPHQL_VEHICLE_SERVICES, GRAPHQL_CONTENT
 from dotenv import load_dotenv
+
+from rivian import Rivian
+from rivian.rivian import GRAPHQL_CONTENT, GRAPHQL_GATEWAY, GRAPHQL_VEHICLE_SERVICES
 
 load_dotenv()
 

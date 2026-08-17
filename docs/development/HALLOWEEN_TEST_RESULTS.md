@@ -122,7 +122,7 @@ To add full Halloween support to the library:
        vehicle_id: str,
        enabled: bool = True,
        interior_sound: int = 0,
-       phone_id: bytes = None
+       phone_id: bytes = None,
    ) -> dict:
        """Set Halloween celebration settings."""
    ```

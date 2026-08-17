@@ -357,7 +357,7 @@ message WindowData {
 **Time Conversion**:
 ```python
 start_hour = start_time // 60  # 1320 // 60 = 22
-start_min = start_time % 60    # 1320 % 60 = 0
+start_min = start_time % 60  # 1320 % 60 = 0
 # Result: 22:00 (10:00 PM)
 ```
 
@@ -403,7 +403,7 @@ from google.protobuf import message
 
 # Encode
 protobuf_bytes = message.SerializeToString()
-base64_payload = base64.b64encode(protobuf_bytes).decode('utf-8')
+base64_payload = base64.b64encode(protobuf_bytes).decode("utf-8")
 
 # Decode
 protobuf_bytes = base64.b64decode(base64_payload)
@@ -497,7 +497,7 @@ try:
     result = await send_parallax_payload(vehicle_id, rvm, payload)
 except RivianRateLimited as e:
     # Wait and retry with exponential backoff
-    await asyncio.sleep(min(2 ** retry_count, 60))
+    await asyncio.sleep(min(2**retry_count, 60))
 except RivianUnauthenticated as e:
     # Re-authenticate and retry
     await rivian.login(username, password)
@@ -649,7 +649,7 @@ class ParallaxClient:
         """
         # Serialize protobuf to bytes and encode as Base64
         protobuf_bytes = payload.SerializeToString()
-        base64_payload = base64.b64encode(protobuf_bytes).decode('utf-8')
+        base64_payload = base64.b64encode(protobuf_bytes).decode("utf-8")
 
         # Build GraphQL mutation
         mutation = gql("""
@@ -799,6 +799,7 @@ The Parallax protocol can be integrated into the existing `rivian-python-client`
 ```python
 # src/rivian/rivian.py
 
+
 async def send_parallax_payload(
     self,
     vehicle_id: str,
@@ -830,7 +831,7 @@ async def send_parallax_payload(
                     "model": rvm_name,
                     "isVehicleModelOp": True,
                     "requiresWakeup": requires_wakeup,
-                }
+                },
             ).select(
                 self._ds.SendParallaxPayloadResponse.success,
                 self._ds.SendParallaxPayloadResponse.sequenceNumber,

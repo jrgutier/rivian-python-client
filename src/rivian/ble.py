@@ -52,7 +52,7 @@ class BleNotificationResponse:
 
     def __init__(self) -> None:
         """Initialize the BLE notification response helper."""
-        self.data: bytes | None = None
+        self.data: bytearray | None = None
         self.event = asyncio.Event()
 
     def notification_handler(self, _, notification_data: bytearray) -> None:
@@ -159,7 +159,7 @@ async def pair_phone(
     if force_generation is None:
         try:
             generation = await detect_vehicle_generation(device)
-        except Exception as ex:
+        except Exception as ex:  # noqa: BLE001  # BLE pairing state machine; changing exception semantics here is out of scope for a transport merge
             _LOGGER.error("Failed to detect vehicle generation: %s", ex)
             return False
 
@@ -263,7 +263,7 @@ async def _pair_phone_gen1(
 
             _LOGGER.debug("Gen 1: Successfully paired with %s", device)
             return True
-    except Exception as ex:  # pylint: disable=broad-except
+    except Exception as ex:  # pylint: disable=broad-except # noqa: BLE001
         _LOGGER.debug(
             "Couldn't connect to %s. "
             'Make sure you are in the correct vehicle and have selected "Set Up" for the appropriate key and try again'
@@ -305,10 +305,10 @@ async def set_bluez_pairable(device: BLEDevice) -> bool:
         introspection = await bus.introspect("org.bluez", path)
         pobject = bus.get_proxy_object("org.bluez", path, introspection)
         iface = pobject.get_interface("org.bluez.Adapter1")
-        if not await iface.get_pairable():
-            await iface.set_pairable(True)
+        if not await iface.get_pairable():  # type: ignore[attr-defined]
+            await iface.set_pairable(True)  # type: ignore[attr-defined]
         bus.disconnect()
-    except Exception as ex:  # pylint: disable=broad-except
+    except Exception as ex:  # pylint: disable=broad-except # noqa: BLE001
         _LOGGER.error(ex)
         return False
 

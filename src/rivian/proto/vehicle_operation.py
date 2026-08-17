@@ -1,10 +1,9 @@
 """Vehicle operation Protocol Buffer messages for sendVehicleOperation mutation."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-from google.protobuf import message as _message
-from google.protobuf import timestamp_pb2
+from google.protobuf import message as _message, timestamp_pb2
 
 
 def _encode_varint(value: int) -> bytes:
@@ -163,7 +162,7 @@ class Operation(_message.Message):
         self.payload = payload
         if timestamp is None:
             timestamp = timestamp_pb2.Timestamp()
-            timestamp.FromDatetime(datetime.now())
+            timestamp.FromDatetime(datetime.now(timezone.utc))
         self.timestamp = timestamp
 
     def to_dict(self) -> dict:

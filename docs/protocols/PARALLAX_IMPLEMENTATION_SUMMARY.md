@@ -179,7 +179,9 @@ cmd = build_parked_energy_query()
 result = await client.send_parallax_command(vehicle_id, cmd)
 
 # Set OTA schedule (daily at 2 AM)
-schedules = [{"id": "nightly", "is_enabled": True, "type": "daily", "starts_at_min": 120}]
+schedules = [
+    {"id": "nightly", "is_enabled": True, "type": "daily", "starts_at_min": 120}
+]
 cmd = build_ota_schedule_command(schedules)
 result = await client.send_parallax_command(vehicle_id, cmd)
 

@@ -155,7 +155,7 @@ msg.hold_time_duration_seconds = 7200
 
 # Serialization
 serialized = msg.SerializeToString()  # b'\x08\xa08'
-hex_value = serialized.hex()          # '08a038'
+hex_value = serialized.hex()  # '08a038'
 base64_value = base64.b64encode(serialized).decode()  # 'CKA4'
 
 # Breakdown:

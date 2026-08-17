@@ -107,13 +107,13 @@ The `set_climate_hold()` method now supports both approaches:
 result = await client.set_climate_hold(
     vehicle_id="01-276948064",
     duration_minutes=480,
-    phone_id=phone_id  # Triggers sendVehicleOperation
+    phone_id=phone_id,  # Triggers sendVehicleOperation
 )
 
 # Android method (without phone_id)
 result = await client.set_climate_hold(
     vehicle_id="VIN123",
-    duration_minutes=480  # Uses sendParallaxPayload
+    duration_minutes=480,  # Uses sendParallaxPayload
 )
 ```
 

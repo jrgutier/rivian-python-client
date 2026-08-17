@@ -208,14 +208,12 @@ from rivian import Rivian, ParallaxCommand, RVMType
 
 # Phase 1 example: Set cabin climate via cloud
 await client.set_climate_hold(
-    vehicle_id="...",
-    temperature_celsius=21.0,
-    duration_minutes=15,
-    defrost_defog=False
+    vehicle_id="...", temperature_celsius=21.0, duration_minutes=15, defrost_defog=False
 )
 
 # Low-level access
 from rivian.parallax_proto import SetClimateHold
+
 command = SetClimateHold(temperature_celsius=21.0, duration_minutes=15)
 await client.send_parallax_command(vehicle_id, RVMType.SET_CLIMATE_HOLD, command)
 ```

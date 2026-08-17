@@ -85,19 +85,12 @@ data = await client.get_charging_session_live_data(vehicle_id)
 
 # Climate control
 await client.set_climate_hold(
-    vehicle_id=vehicle_id,
-    enabled=True,
-    temp_celsius=22.0,
-    duration_minutes=120
+    vehicle_id=vehicle_id, enabled=True, temp_celsius=22.0, duration_minutes=120
 )
 
 # Charging schedule
 await client.set_charging_schedule(
-    vehicle_id=vehicle_id,
-    start_hour=22,
-    start_minute=0,
-    end_hour=6,
-    end_minute=0
+    vehicle_id=vehicle_id, start_hour=22, start_minute=0, end_hour=6, end_minute=0
 )
 ```
 
@@ -128,13 +121,12 @@ from rivian import VehicleCommand
 
 # Send command
 command_id = await client.send_vehicle_command(
-    vehicle_id=vehicle_id,
-    command=VehicleCommand.UNLOCK_ALL_CLOSURES
+    vehicle_id=vehicle_id, command=VehicleCommand.UNLOCK_ALL_CLOSURES
 )
 
 # Monitor status via WebSocket
 async for state in client.subscribe_for_command_state(command_id):
-    if state['state'] in ['COMPLETE', 'FAILED']:
+    if state["state"] in ["COMPLETE", "FAILED"]:
         break
 ```
 
@@ -145,8 +137,7 @@ from rivian.const import VEHICLE_STATE_PROPERTIES
 
 # Subscribe to vehicle state updates
 async for update in client.subscribe_for_vehicle_updates(
-    vehicle_id=vehicle_id,
-    properties=VEHICLE_STATE_PROPERTIES
+    vehicle_id=vehicle_id, properties=VEHICLE_STATE_PROPERTIES
 ):
     print(f"Battery: {update['batteryLevel']['value']}%")
     print(f"Range: {update['distanceToEmpty']['value']} miles")

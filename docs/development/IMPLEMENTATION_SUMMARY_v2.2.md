@@ -234,9 +234,7 @@ for user in users:
 ```python
 # Register iOS push notification token
 await client.register_push_notification_token(
-    token="your_apns_token",
-    platform="ios",
-    vehicle_id=vehicle_id
+    token="your_apns_token", platform="ios", vehicle_id=vehicle_id
 )
 ```
 
