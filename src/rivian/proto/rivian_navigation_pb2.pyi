@@ -18,16 +18,7 @@ class TripProgress(_message.Message):
     leg_eta_utc: _timestamp_pb2.Timestamp
     trip_eta_utc: _timestamp_pb2.Timestamp
     next_stop_index: int
-    def __init__(
-        self,
-        leg_eta_utc: _Optional[
-            _Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]
-        ] = ...,
-        trip_eta_utc: _Optional[
-            _Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]
-        ] = ...,
-        next_stop_index: _Optional[int] = ...,
-    ) -> None: ...
+    def __init__(self, leg_eta_utc: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., trip_eta_utc: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_stop_index: _Optional[int] = ...) -> None: ...
 
 class TripWaypoint(_message.Message):
     __slots__ = ("location", "name", "address")
@@ -37,21 +28,10 @@ class TripWaypoint(_message.Message):
     location: _rivian_base_pb2.Location
     name: str
     address: str
-    def __init__(
-        self,
-        location: _Optional[_Union[_rivian_base_pb2.Location, _Mapping]] = ...,
-        name: _Optional[str] = ...,
-        address: _Optional[str] = ...,
-    ) -> None: ...
+    def __init__(self, location: _Optional[_Union[_rivian_base_pb2.Location, _Mapping]] = ..., name: _Optional[str] = ..., address: _Optional[str] = ...) -> None: ...
 
 class TripRoute(_message.Message):
-    __slots__ = (
-        "waypoints",
-        "distance_meters",
-        "duration_seconds",
-        "initial_soc",
-        "final_soc",
-    )
+    __slots__ = ("waypoints", "distance_meters", "duration_seconds", "initial_soc", "final_soc")
     WAYPOINTS_FIELD_NUMBER: _ClassVar[int]
     DISTANCE_METERS_FIELD_NUMBER: _ClassVar[int]
     DURATION_SECONDS_FIELD_NUMBER: _ClassVar[int]
@@ -62,23 +42,10 @@ class TripRoute(_message.Message):
     duration_seconds: int
     initial_soc: float
     final_soc: float
-    def __init__(
-        self,
-        waypoints: _Optional[_Iterable[_Union[TripWaypoint, _Mapping]]] = ...,
-        distance_meters: _Optional[int] = ...,
-        duration_seconds: _Optional[int] = ...,
-        initial_soc: _Optional[float] = ...,
-        final_soc: _Optional[float] = ...,
-    ) -> None: ...
+    def __init__(self, waypoints: _Optional[_Iterable[_Union[TripWaypoint, _Mapping]]] = ..., distance_meters: _Optional[int] = ..., duration_seconds: _Optional[int] = ..., initial_soc: _Optional[float] = ..., final_soc: _Optional[float] = ...) -> None: ...
 
 class TripPreferences(_message.Message):
-    __slots__ = (
-        "avoid_highways",
-        "avoid_tolls",
-        "avoid_ferries",
-        "fastest_route",
-        "most_efficient",
-    )
+    __slots__ = ("avoid_highways", "avoid_tolls", "avoid_ferries", "fastest_route", "most_efficient")
     AVOID_HIGHWAYS_FIELD_NUMBER: _ClassVar[int]
     AVOID_TOLLS_FIELD_NUMBER: _ClassVar[int]
     AVOID_FERRIES_FIELD_NUMBER: _ClassVar[int]
@@ -89,14 +56,7 @@ class TripPreferences(_message.Message):
     avoid_ferries: bool
     fastest_route: bool
     most_efficient: bool
-    def __init__(
-        self,
-        avoid_highways: bool = ...,
-        avoid_tolls: bool = ...,
-        avoid_ferries: bool = ...,
-        fastest_route: bool = ...,
-        most_efficient: bool = ...,
-    ) -> None: ...
+    def __init__(self, avoid_highways: bool = ..., avoid_tolls: bool = ..., avoid_ferries: bool = ..., fastest_route: bool = ..., most_efficient: bool = ...) -> None: ...
 
 class FasterRouteInfo(_message.Message):
     __slots__ = ("time_savings_seconds", "distance_difference_meters", "route")
@@ -106,23 +66,10 @@ class FasterRouteInfo(_message.Message):
     time_savings_seconds: int
     distance_difference_meters: int
     route: TripRoute
-    def __init__(
-        self,
-        time_savings_seconds: _Optional[int] = ...,
-        distance_difference_meters: _Optional[int] = ...,
-        route: _Optional[_Union[TripRoute, _Mapping]] = ...,
-    ) -> None: ...
+    def __init__(self, time_savings_seconds: _Optional[int] = ..., distance_difference_meters: _Optional[int] = ..., route: _Optional[_Union[TripRoute, _Mapping]] = ...) -> None: ...
 
 class TripInfo(_message.Message):
-    __slots__ = (
-        "id",
-        "origin",
-        "route",
-        "preferences",
-        "initial_soc_percentage",
-        "departure_time",
-        "faster_route",
-    )
+    __slots__ = ("id", "origin", "route", "preferences", "initial_soc_percentage", "departure_time", "faster_route")
     ID_FIELD_NUMBER: _ClassVar[int]
     ORIGIN_FIELD_NUMBER: _ClassVar[int]
     ROUTE_FIELD_NUMBER: _ClassVar[int]
@@ -137,15 +84,4 @@ class TripInfo(_message.Message):
     initial_soc_percentage: float
     departure_time: _timestamp_pb2.Timestamp
     faster_route: FasterRouteInfo
-    def __init__(
-        self,
-        id: _Optional[str] = ...,
-        origin: _Optional[_Union[TripWaypoint, _Mapping]] = ...,
-        route: _Optional[_Union[TripRoute, _Mapping]] = ...,
-        preferences: _Optional[_Union[TripPreferences, _Mapping]] = ...,
-        initial_soc_percentage: _Optional[float] = ...,
-        departure_time: _Optional[
-            _Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]
-        ] = ...,
-        faster_route: _Optional[_Union[FasterRouteInfo, _Mapping]] = ...,
-    ) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., origin: _Optional[_Union[TripWaypoint, _Mapping]] = ..., route: _Optional[_Union[TripRoute, _Mapping]] = ..., preferences: _Optional[_Union[TripPreferences, _Mapping]] = ..., initial_soc_percentage: _Optional[float] = ..., departure_time: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., faster_route: _Optional[_Union[FasterRouteInfo, _Mapping]] = ...) -> None: ...

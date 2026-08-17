@@ -9,9 +9,7 @@ DESCRIPTOR: _descriptor.FileDescriptor
 
 class TimeEstimationValidityStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
-    TIME_ESTIMATION_VALIDITY_STATUS_UNRECOGNIZED: _ClassVar[
-        TimeEstimationValidityStatus
-    ]
+    TIME_ESTIMATION_VALIDITY_STATUS_UNRECOGNIZED: _ClassVar[TimeEstimationValidityStatus]
     TIME_ESTIMATION_VALID: _ClassVar[TimeEstimationValidityStatus]
     TIME_ESTIMATION_INVALID: _ClassVar[TimeEstimationValidityStatus]
 
@@ -27,7 +25,6 @@ class BarContext(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     BAR_CONTEXT_UNRECOGNIZED: _ClassVar[BarContext]
     BAR_CONTEXT_ACTUAL: _ClassVar[BarContext]
     BAR_CONTEXT_ESTIMATED: _ClassVar[BarContext]
-
 TIME_ESTIMATION_VALIDITY_STATUS_UNRECOGNIZED: TimeEstimationValidityStatus
 TIME_ESTIMATION_VALID: TimeEstimationValidityStatus
 TIME_ESTIMATION_INVALID: TimeEstimationValidityStatus
@@ -40,19 +37,7 @@ BAR_CONTEXT_ACTUAL: BarContext
 BAR_CONTEXT_ESTIMATED: BarContext
 
 class EnergyDistribution(_message.Message):
-    __slots__ = (
-        "total_kwh",
-        "thermal_kwh",
-        "outlets_kwh",
-        "system_kwh",
-        "gear_guard_kwh",
-        "total_range",
-        "thermal_range",
-        "outlets_range",
-        "system_range",
-        "gear_guard_range",
-        "session_duration_mins",
-    )
+    __slots__ = ("total_kwh", "thermal_kwh", "outlets_kwh", "system_kwh", "gear_guard_kwh", "total_range", "thermal_range", "outlets_range", "system_range", "gear_guard_range", "session_duration_mins")
     TOTAL_KWH_FIELD_NUMBER: _ClassVar[int]
     THERMAL_KWH_FIELD_NUMBER: _ClassVar[int]
     OUTLETS_KWH_FIELD_NUMBER: _ClassVar[int]
@@ -75,20 +60,7 @@ class EnergyDistribution(_message.Message):
     system_range: float
     gear_guard_range: float
     session_duration_mins: int
-    def __init__(
-        self,
-        total_kwh: _Optional[float] = ...,
-        thermal_kwh: _Optional[float] = ...,
-        outlets_kwh: _Optional[float] = ...,
-        system_kwh: _Optional[float] = ...,
-        gear_guard_kwh: _Optional[float] = ...,
-        total_range: _Optional[float] = ...,
-        thermal_range: _Optional[float] = ...,
-        outlets_range: _Optional[float] = ...,
-        system_range: _Optional[float] = ...,
-        gear_guard_range: _Optional[float] = ...,
-        session_duration_mins: _Optional[int] = ...,
-    ) -> None: ...
+    def __init__(self, total_kwh: _Optional[float] = ..., thermal_kwh: _Optional[float] = ..., outlets_kwh: _Optional[float] = ..., system_kwh: _Optional[float] = ..., gear_guard_kwh: _Optional[float] = ..., total_range: _Optional[float] = ..., thermal_range: _Optional[float] = ..., outlets_range: _Optional[float] = ..., system_range: _Optional[float] = ..., gear_guard_range: _Optional[float] = ..., session_duration_mins: _Optional[int] = ...) -> None: ...
 
 class ParkEnergyDistributions(_message.Message):
     __slots__ = ("last_24_hours", "last_8_hours", "last_park_session")
@@ -98,23 +70,10 @@ class ParkEnergyDistributions(_message.Message):
     last_24_hours: EnergyDistribution
     last_8_hours: EnergyDistribution
     last_park_session: EnergyDistribution
-    def __init__(
-        self,
-        last_24_hours: _Optional[_Union[EnergyDistribution, _Mapping]] = ...,
-        last_8_hours: _Optional[_Union[EnergyDistribution, _Mapping]] = ...,
-        last_park_session: _Optional[_Union[EnergyDistribution, _Mapping]] = ...,
-    ) -> None: ...
+    def __init__(self, last_24_hours: _Optional[_Union[EnergyDistribution, _Mapping]] = ..., last_8_hours: _Optional[_Union[EnergyDistribution, _Mapping]] = ..., last_park_session: _Optional[_Union[EnergyDistribution, _Mapping]] = ...) -> None: ...
 
 class ChargingGraphBar(_message.Message):
-    __slots__ = (
-        "soc",
-        "power",
-        "start_time_ms",
-        "end_time_ms",
-        "time_estimation_validity_status",
-        "charging_state",
-        "bar_context",
-    )
+    __slots__ = ("soc", "power", "start_time_ms", "end_time_ms", "time_estimation_validity_status", "charging_state", "bar_context")
     SOC_FIELD_NUMBER: _ClassVar[int]
     POWER_FIELD_NUMBER: _ClassVar[int]
     START_TIME_MS_FIELD_NUMBER: _ClassVar[int]
@@ -129,28 +88,10 @@ class ChargingGraphBar(_message.Message):
     time_estimation_validity_status: TimeEstimationValidityStatus
     charging_state: ChargingState
     bar_context: BarContext
-    def __init__(
-        self,
-        soc: _Optional[int] = ...,
-        power: _Optional[float] = ...,
-        start_time_ms: _Optional[int] = ...,
-        end_time_ms: _Optional[int] = ...,
-        time_estimation_validity_status: _Optional[
-            _Union[TimeEstimationValidityStatus, str]
-        ] = ...,
-        charging_state: _Optional[_Union[ChargingState, str]] = ...,
-        bar_context: _Optional[_Union[BarContext, str]] = ...,
-    ) -> None: ...
+    def __init__(self, soc: _Optional[int] = ..., power: _Optional[float] = ..., start_time_ms: _Optional[int] = ..., end_time_ms: _Optional[int] = ..., time_estimation_validity_status: _Optional[_Union[TimeEstimationValidityStatus, str]] = ..., charging_state: _Optional[_Union[ChargingState, str]] = ..., bar_context: _Optional[_Union[BarContext, str]] = ...) -> None: ...
 
 class ChargingGraphGlobal(_message.Message):
     __slots__ = ("global_charging_graph_bar",)
     GLOBAL_CHARGING_GRAPH_BAR_FIELD_NUMBER: _ClassVar[int]
-    global_charging_graph_bar: _containers.RepeatedCompositeFieldContainer[
-        ChargingGraphBar
-    ]
-    def __init__(
-        self,
-        global_charging_graph_bar: _Optional[
-            _Iterable[_Union[ChargingGraphBar, _Mapping]]
-        ] = ...,
-    ) -> None: ...
+    global_charging_graph_bar: _containers.RepeatedCompositeFieldContainer[ChargingGraphBar]
+    def __init__(self, global_charging_graph_bar: _Optional[_Iterable[_Union[ChargingGraphBar, _Mapping]]] = ...) -> None: ...

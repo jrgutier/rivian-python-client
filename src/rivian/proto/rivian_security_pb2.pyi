@@ -35,7 +35,6 @@ class CccPassivePermissionStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapp
     CCC_PASSIVE_PERMISSION_STATUS_SNA: _ClassVar[CccPassivePermissionStatus]
     CCC_PASSIVE_PERMISSION_STATUS_ENABLED: _ClassVar[CccPassivePermissionStatus]
     CCC_PASSIVE_PERMISSION_STATUS_DISABLED: _ClassVar[CccPassivePermissionStatus]
-
 GEOFENCE_TYPE_UNRECOGNIZED: GeofenceType
 GEOFENCE_TYPE_HOME: GeofenceType
 GEOFENCE_TYPE_WORK: GeofenceType
@@ -60,27 +59,19 @@ class Geofence(_message.Message):
     NAME_FIELD_NUMBER: _ClassVar[int]
     type: GeofenceType
     name: str
-    def __init__(
-        self,
-        type: _Optional[_Union[GeofenceType, str]] = ...,
-        name: _Optional[str] = ...,
-    ) -> None: ...
+    def __init__(self, type: _Optional[_Union[GeofenceType, str]] = ..., name: _Optional[str] = ...) -> None: ...
 
 class FavoriteGeofences(_message.Message):
     __slots__ = ("favorites",)
     FAVORITES_FIELD_NUMBER: _ClassVar[int]
     favorites: _containers.RepeatedCompositeFieldContainer[Geofence]
-    def __init__(
-        self, favorites: _Optional[_Iterable[_Union[Geofence, _Mapping]]] = ...
-    ) -> None: ...
+    def __init__(self, favorites: _Optional[_Iterable[_Union[Geofence, _Mapping]]] = ...) -> None: ...
 
 class GearGuardStreamingInVehicleConsent(_message.Message):
     __slots__ = ("user_consent",)
     USER_CONSENT_FIELD_NUMBER: _ClassVar[int]
     user_consent: GearGuardConsentStatus
-    def __init__(
-        self, user_consent: _Optional[_Union[GearGuardConsentStatus, str]] = ...
-    ) -> None: ...
+    def __init__(self, user_consent: _Optional[_Union[GearGuardConsentStatus, str]] = ...) -> None: ...
 
 class GearGuardStreamingDailyLimit(_message.Message):
     __slots__ = ("daily_limit", "next_reset_time_unix_sec")
@@ -88,11 +79,7 @@ class GearGuardStreamingDailyLimit(_message.Message):
     NEXT_RESET_TIME_UNIX_SEC_FIELD_NUMBER: _ClassVar[int]
     daily_limit: GearGuardDailyLimitStatus
     next_reset_time_unix_sec: int
-    def __init__(
-        self,
-        daily_limit: _Optional[_Union[GearGuardDailyLimitStatus, str]] = ...,
-        next_reset_time_unix_sec: _Optional[int] = ...,
-    ) -> None: ...
+    def __init__(self, daily_limit: _Optional[_Union[GearGuardDailyLimitStatus, str]] = ..., next_reset_time_unix_sec: _Optional[int] = ...) -> None: ...
 
 class PassiveEntrySetting(_message.Message):
     __slots__ = ("hold_time_duration_seconds",)
@@ -101,18 +88,9 @@ class PassiveEntrySetting(_message.Message):
     def __init__(self, hold_time_duration_seconds: _Optional[int] = ...) -> None: ...
 
 class PassiveEntryStatus(_message.Message):
-    __slots__ = (
-        "allow_passive_entry_via_bluetooth_while_in_ccc",
-        "ccc_passive_permission_status",
-    )
+    __slots__ = ("allow_passive_entry_via_bluetooth_while_in_ccc", "ccc_passive_permission_status")
     ALLOW_PASSIVE_ENTRY_VIA_BLUETOOTH_WHILE_IN_CCC_FIELD_NUMBER: _ClassVar[int]
     CCC_PASSIVE_PERMISSION_STATUS_FIELD_NUMBER: _ClassVar[int]
     allow_passive_entry_via_bluetooth_while_in_ccc: bool
     ccc_passive_permission_status: CccPassivePermissionStatus
-    def __init__(
-        self,
-        allow_passive_entry_via_bluetooth_while_in_ccc: bool = ...,
-        ccc_passive_permission_status: _Optional[
-            _Union[CccPassivePermissionStatus, str]
-        ] = ...,
-    ) -> None: ...
+    def __init__(self, allow_passive_entry_via_bluetooth_while_in_ccc: bool = ..., ccc_passive_permission_status: _Optional[_Union[CccPassivePermissionStatus, str]] = ...) -> None: ...
