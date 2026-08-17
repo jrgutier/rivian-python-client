@@ -27,12 +27,23 @@ dependencies = [
     "protobuf (>=3.20.0,<7)",
     "backports-strenum (>=1.2.4) ; python_version < '3.11'",
     "typing_extensions (>=4.14.1) ; python_version < '3.11'",
+    # Imported by rivian.py and ws_monitor.py on Python 3.10, where
+    # asyncio.timeout does not yet exist. Neither this project nor upstream
+    # declared it -- it resolved only because aiohttp happens to depend on it
+    # below 3.11. That is luck, not a contract, and it breaks the moment aiohttp
+    # drops it. Declared explicitly.
+    "async-timeout (>=4.0) ; python_version < '3.11'",
 ]
 
 dynamic = ["version"]
 
 [project.optional-dependencies]
 ble = [
+    # Intentionally no upper bound. A `<1.0.0` cap here is what caused upstream
+    # issue #230 -- Home Assistant resolved bleak 1.0.1 and the integration
+    # failed to load. HA pins bleak itself, and a client ceiling tighter than
+    # HA's pin re-creates exactly that failure. The dev environment is kept
+    # honest by installing under HA's constraints, not by capping here.
     "bleak (>=0.21)",
     "dbus-fast (>=2.11.0) ; sys_platform == 'linux'",
 ]

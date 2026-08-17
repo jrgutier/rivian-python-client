@@ -831,139 +831,6 @@ class TestRivianClassMethods:
 
             await rivian.close()
 
-    async def test_set_climate_hold_enabled(
-        self, aresponses: ResponsesMockServer
-    ) -> None:
-        """Test setting climate hold enabled.
-
-        Validates that the Rivian client can send a climate hold command
-        with serialized protobuf payload via the Parallax protocol.
-        """
-        aresponses.add(
-            "rivian.com",
-            "/api/gql/gateway/graphql",
-            "POST",
-            response=PARALLAX_SUCCESS_RESPONSE,
-        )
-
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-            result = await rivian.set_climate_hold(
-                "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=22.0
-            )
-
-            assert result["success"] is True
-            await rivian.close()
-
-    async def test_set_climate_hold_disabled(
-        self, aresponses: ResponsesMockServer
-    ) -> None:
-        """Test setting climate hold disabled.
-
-        Validates that climate hold can be disabled via Parallax protocol.
-        """
-        aresponses.add(
-            "rivian.com",
-            "/api/gql/gateway/graphql",
-            "POST",
-            response=PARALLAX_SUCCESS_RESPONSE,
-        )
-
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-            result = await rivian.set_climate_hold(
-                "VIN123", TEST_PHONE_ID, enabled=False
-            )
-
-            assert result["success"] is True
-            await rivian.close()
-
-    async def test_set_climate_hold_invalid_temp_too_low(self) -> None:
-        """Test setting climate hold with temperature too low."""
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-
-            with pytest.raises(
-                RivianBadRequestError, match="Temperature must be between 16°C and 29°C"
-            ):
-                await rivian.set_climate_hold(
-                    "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=15.0
-                )
-
-            await rivian.close()
-
-    async def test_set_climate_hold_invalid_temp_too_high(self) -> None:
-        """Test setting climate hold with temperature too high."""
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-
-            with pytest.raises(
-                RivianBadRequestError, match="Temperature must be between 16°C and 29°C"
-            ):
-                await rivian.set_climate_hold(
-                    "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=30.0
-                )
-
-            await rivian.close()
-
-    async def test_set_climate_hold_valid_temp_boundaries(
-        self, aresponses: ResponsesMockServer
-    ) -> None:
-        """Test setting climate hold with valid boundary temperatures.
-
-        Validates that boundary temperatures (16°C and 29°C) are accepted.
-        """
-        # Add two responses for two API calls
-        aresponses.add(
-            "rivian.com",
-            "/api/gql/gateway/graphql",
-            "POST",
-            response=PARALLAX_SUCCESS_RESPONSE,
-        )
-        aresponses.add(
-            "rivian.com",
-            "/api/gql/gateway/graphql",
-            "POST",
-            response=PARALLAX_SUCCESS_RESPONSE,
-        )
-
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-
-            # Test minimum temperature
-            result_min = await rivian.set_climate_hold(
-                "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=16.0
-            )
-            assert result_min["success"] is True
-
-            # Test maximum temperature
-            result_max = await rivian.set_climate_hold(
-                "VIN123", TEST_PHONE_ID, enabled=True, temp_celsius=29.0
-            )
-            assert result_max["success"] is True
-
-            await rivian.close()
-
     async def test_set_charging_schedule_valid(
         self, aresponses: ResponsesMockServer
     ) -> None:
@@ -1202,11 +1069,53 @@ class TestRivianClassMethods:
             assert result["success"] is True
             await rivian.close()
 
+    # Removed during the transport merge, not silenced: test_get_charging_session_live_data,
+    # test_get_climate_hold_status, test_get_ota_status and test_get_trip_progress covered
+    # gql-era convenience getters that no caller in the Home Assistant integration ever
+    # reached, so the methods were dropped rather than ported. The builders behind them
+    # (build_charging_session_query, build_climate_status_query, build_ota_status_query,
+    # build_trip_progress_query) survive and are still covered above. Reads of those RVMs
+    # come from the Parallax subscription decoder, not from per-RVM getters.
 
-# Removed during the transport merge, not silenced: test_get_charging_session_live_data,
-# test_get_climate_hold_status, test_get_ota_status and test_get_trip_progress covered
-# gql-era convenience getters that no caller in the Home Assistant integration ever
-# reached, so the methods were dropped rather than ported. The builders behind them
-# (build_charging_session_query, build_climate_status_query, build_ota_status_query,
-# build_trip_progress_query) survive and are still covered above. Reads of those RVMs
-# come from the Parallax subscription decoder, not from per-RVM getters.
+    async def test_set_climate_hold_sends_duration(
+        self, aresponses: ResponsesMockServer
+    ) -> None:
+        """Duration is what actually reaches the vehicle.
+
+        ClimateHoldSetting carries exactly one field, hold_time_duration_seconds.
+        The removed `enabled` and `temp_celsius` parameters were accepted and
+        discarded, and temp_celsius was validated -- so a caller could be rejected
+        over a value that was never transmitted. Their tests went with them; this
+        asserts the field that does travel.
+        """
+        aresponses.add(
+            "rivian.com",
+            "/api/gql/gateway/graphql",
+            "POST",
+            response=PARALLAX_SUCCESS_RESPONSE,
+        )
+
+        async with aiohttp.ClientSession():
+            rivian = Rivian(
+                csrf_token="token",
+                app_session_token="token",
+                user_session_token="token",
+            )
+            result = await rivian.set_climate_hold(
+                "VIN123", TEST_PHONE_ID, duration_minutes=120
+            )
+            assert result["success"] is True
+            await rivian.close()
+
+    def test_climate_hold_payload_encodes_minutes_as_seconds(self) -> None:
+        """120 minutes must encode as 7200 seconds, not 120.
+
+        The wire format for a two-hour hold is documented as 08a038 in
+        docs/development/SENDVEHICLEOPERATION_TEST_RESULTS.md. A unit slip here
+        would be invisible -- the command would succeed and hold for two minutes.
+        """
+        from rivian.parallax import build_climate_hold_command
+
+        cmd = build_climate_hold_command(duration_minutes=120)
+        payload = base64.b64decode(cmd.payload_b64)
+        assert payload == bytes.fromhex("08a038"), payload.hex()

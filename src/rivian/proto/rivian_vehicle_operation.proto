@@ -10,7 +10,7 @@ message VehicleOperationRequest {
   // Phone information
   message PhoneInfo {
     int32 version = 1;      // Protocol version (always 1)
-    bytes phone_id = 2;     // 32-byte phone identifier
+    bytes phone_id = 2;     // 16-byte phone identifier: uuid.UUID(vasPhoneId).bytes
   }
 
   // Request metadata

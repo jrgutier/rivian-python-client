@@ -1751,6 +1751,7 @@ name = "rivian-python-client"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "async-timeout", marker = "python_full_version < '3.11'" },
     { name = "backports-strenum", marker = "python_full_version < '3.11'" },
     { name = "cryptography" },
     { name = "protobuf" },
@@ -1779,6 +1780,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.0.0" },
+    { name = "async-timeout", marker = "python_full_version < '3.11'", specifier = ">=4.0" },
     { name = "backports-strenum", marker = "python_full_version < '3.11'", specifier = ">=1.2.4" },
     { name = "bleak", marker = "extra == 'ble'", specifier = ">=0.21" },
     { name = "cryptography", specifier = ">=41.0.1" },

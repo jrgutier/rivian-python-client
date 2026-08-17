@@ -77,7 +77,7 @@ class PhoneInfo(_message.Message):
 
     Attributes:
         version: Protocol version (always 1)
-        phone_id: 32-byte phone identifier
+        phone_id: 16-byte phone identifier (uuid.UUID(vasPhoneId).bytes)
     """
 
     def __init__(self, version: int = 1, phone_id: bytes = b""):

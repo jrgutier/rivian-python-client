@@ -893,7 +893,7 @@ class Rivian:
         Args:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
             parallax_cmd: ParallaxCommand instance with RVM type and payload
-            phone_id: 32-byte phone identifier from enrollment
+            phone_id: 16-byte phone identifier from enrollment
 
         Returns:
             dict with 'success' (bool) key
@@ -934,8 +934,6 @@ class Rivian:
         self,
         vehicle_id: str,
         phone_id: bytes,
-        enabled: bool = True,
-        temp_celsius: float = 22.0,
         duration_minutes: int = 120,
     ) -> dict:
         """Set climate hold via sendVehicleOperation.
@@ -944,20 +942,21 @@ class Rivian:
 
         Args:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
-            phone_id: 32-byte phone identifier from enrollment
-            enabled: Whether to enable climate hold (kept for API compatibility,
-                    but not sent in protobuf - may be controlled elsewhere)
-            temp_celsius: Target temperature in Celsius (kept for API compatibility,
-                         but not sent in protobuf - may be controlled elsewhere)
-            duration_minutes: Hold duration in minutes (sent in protobuf)
+            phone_id: 16-byte phone identifier from enrollment
+                (uuid.UUID(vasPhoneId).bytes)
+            duration_minutes: Hold duration in minutes
 
         Returns:
             dict with success status
 
         Note:
-            Based on APK analysis, the ClimateHoldSetting protobuf only contains
-            hold_time_duration_seconds. The enabled state and target temperature
-            may be controlled via separate GraphQL mutations or vehicle commands.
+            ClimateHoldSetting carries exactly one field, hold_time_duration_seconds
+            -- confirmed on the wire as 08a038 (7200s). `enabled` and `temp_celsius`
+            parameters used to be accepted here and silently discarded; temp_celsius
+            was even validated, so a caller could get a RivianBadRequestError for a
+            value that was never sent. Both are removed rather than kept for
+            "API compatibility" with behaviour that never existed. Enable state and
+            target temperature are controlled through separate vehicle commands.
 
         Example:
             >>> # Get phone_id from enrollment
@@ -972,11 +971,6 @@ class Rivian:
             ... )
             >>> print(f"Success: {result['success']}")
         """
-        # Note: Temperature validation kept for API compatibility, but temp
-        # is not actually sent in the protobuf based on APK analysis
-        if not 16.0 <= temp_celsius <= 29.0:
-            raise RivianBadRequestError("Temperature must be between 16°C and 29°C")
-
         from .parallax import build_climate_hold_command
 
         cmd = build_climate_hold_command(duration_minutes=duration_minutes)
@@ -999,7 +993,7 @@ class Rivian:
 
         Args:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
-            phone_id: 32-byte phone identifier from enrollment
+            phone_id: 16-byte phone identifier from enrollment
             start_hour: Start hour (0-23)
             start_minute: Start minute (0-59)
             end_hour: End hour (0-23)
@@ -1048,7 +1042,7 @@ class Rivian:
 
         Args:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
-            phone_id: 32-byte phone identifier from enrollment
+            phone_id: 16-byte phone identifier from enrollment
             enabled: Whether to enable ventilation
             mode: Ventilation mode ("AUTO", "MANUAL", "OFF")
             windows_open_percent: Window opening percentage (0-100)
@@ -1102,7 +1096,7 @@ class Rivian:
 
         Args:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
-            phone_id: 32-byte phone identifier from enrollment
+            phone_id: 16-byte phone identifier from enrollment
             enabled: Whether to enable Halloween light show
             animation_mode: Animation mode ("SPOOKY", "FESTIVE", "OFF")
             brightness: Brightness level (0-100)
@@ -1147,7 +1141,7 @@ class Rivian:
 
         Args:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
-            phone_id: 32-byte phone identifier from enrollment
+            phone_id: 16-byte phone identifier from enrollment
             fences: List of geofence definitions, each with:
                 - fence_id: Unique identifier (required)
                 - name: Human-readable name (required)
@@ -1228,7 +1222,7 @@ class Rivian:
 
         Args:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
-            phone_id: 32-byte phone identifier from enrollment
+            phone_id: 16-byte phone identifier from enrollment
             video_enabled: Whether video recording is enabled
             audio_enabled: Whether audio recording is enabled
             cloud_storage_enabled: Whether cloud storage is enabled
@@ -1278,7 +1272,7 @@ class Rivian:
 
         Args:
             vehicle_id: Vehicle ID (format: "01-XXXXXXXX")
-            phone_id: 32-byte phone identifier from enrollment
+            phone_id: 16-byte phone identifier from enrollment
             enabled: Whether passive entry is enabled
             unlock_on_approach: Whether to unlock when phone approaches (default: True)
             lock_on_walk_away: Whether to lock when phone walks away (default: True)
