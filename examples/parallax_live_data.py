@@ -162,7 +162,9 @@ async def main() -> None:
             if input("Set cabin preconditioning schedule? (y/n): ").lower() == "y":
                 try:
                     print("\nSchedule format examples:")
-                    print('  Enable: {"enabled": true, "time": "07:00", "days": ["MON", "TUE"]}')
+                    print(
+                        '  Enable: {"enabled": true, "time": "07:00", "days": ["MON", "TUE"]}'
+                    )
                     print('  Disable: {"enabled": false}')
 
                     schedule_str = input("\nEnter schedule JSON: ")
@@ -188,17 +190,29 @@ async def main() -> None:
             print("=" * 50)
             print(f"Vehicle: {vehicle_name}")
             print("\nQuery Methods:")
-            print(f"  Charging session data:     {'✓' if results.get('charging_session') else '✗'}")
-            print(f"  Climate hold status:       {'✓' if results.get('climate_status') else '✗'}")
-            print(f"  Schedules (current):       {'✓' if results.get('schedules_current') else '✗'}")
-            print(f"  Schedules (all vehicles):  {'✓' if results.get('schedules_all') else '✗'}")
+            print(
+                f"  Charging session data:     {'✓' if results.get('charging_session') else '✗'}"
+            )
+            print(
+                f"  Climate hold status:       {'✓' if results.get('climate_status') else '✗'}"
+            )
+            print(
+                f"  Schedules (current):       {'✓' if results.get('schedules_current') else '✗'}"
+            )
+            print(
+                f"  Schedules (all vehicles):  {'✓' if results.get('schedules_all') else '✗'}"
+            )
 
             if "set_climate" in results or "set_schedule" in results:
                 print("\nCommand Methods:")
                 if "set_climate" in results:
-                    print(f"  Set climate hold:          {'✓' if results['set_climate'] else '✗'}")
+                    print(
+                        f"  Set climate hold:          {'✓' if results['set_climate'] else '✗'}"
+                    )
                 if "set_schedule" in results:
-                    print(f"  Set schedule:              {'✓' if results['set_schedule'] else '✗'}")
+                    print(
+                        f"  Set schedule:              {'✓' if results['set_schedule'] else '✗'}"
+                    )
 
             total_tests = len(results)
             passed_tests = sum(1 for v in results.values() if v)

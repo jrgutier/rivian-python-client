@@ -49,7 +49,7 @@ async def main() -> None:
             # Test 4: Get vehicle images
             print("\n✓ Testing: get_vehicle_images()")
             images = await client.get_vehicle_images(extension="png", resolution="@2x")
-            mobile_images = len(images.get('getVehicleMobileImages', []))
+            mobile_images = len(images.get("getVehicleMobileImages", []))
             print(f"  Mobile images: {mobile_images}")
 
             print("\n" + "=" * 60)
@@ -62,6 +62,7 @@ async def main() -> None:
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

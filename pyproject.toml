@@ -1,55 +1,92 @@
-[tool.poetry]
+[project]
 name = "rivian-python-client"
-version = "2.1.0"
 description = "Rivian API Client (Unofficial)"
 readme = "README.md"
-authors = ["Brian Retterer <bretterer@gmail.com>"]
 license = "MIT"
-packages = [
-    { include = "rivian", from = "src" },
+authors = [
+    { name = "Brian Retterer", email = "bretterer@gmail.com" },
+    { name = "J.R. Gutierrez", email = "jrgutier@gmail.com" },
+]
+# 3.9 kept for now. Upstream 2.1.0 requires >=3.10 and drops the py<3.11 shims;
+# that lands with the transport merge, not here — this change is build-system only.
+requires-python = ">=3.9"
+dynamic = ["version"]
+
+# Deliberately OUR current dependency set, not upstream 2.1.0's. Upstream has
+# already removed gql and protobuf, but this tree still imports both at module
+# scope (rivian.py:17-21, parallax.py:13 and nine proto/ modules), so adopting
+# upstream's leaner set here would break the package immediately. Aligning the
+# dependencies is the transport merge's job; this commit only replaces the build
+# backend, so the two changes stay separately revertible.
+dependencies = [
+    "aiohttp>=3.0.0",
+    "attrs>=20.3.0",
+    "propcache>=0.1.0",
+    "yarl>=1.6.0",
+    "cryptography>=41.0.1",
+    # Upper bound is load-bearing, not caution. The checked-in *_pb2 modules are
+    # gencode 6.31.1 and call ValidateProtobufRuntimeVersion against the installed
+    # runtime; an unbounded resolve picks protobuf 7.x and every one of them fails
+    # at import with a descriptor-pool error. HA itself pins protobuf==6.32.0.
+    "protobuf>=3.20.0,<7",
+    "backports-strenum>=1.2.4 ; python_version < '3.11'",
+    # gql[websockets] pins websockets<12, but HA integrations need >=13, so the
+    # aiohttp extra is taken and websockets is declared separately.
+    "gql[aiohttp]>=3.0.0,<4.0.0",
+    "websockets>=13.0,<16.0",
 ]
 
-[tool.poetry.dependencies]
-python = ">=3.9"
-# Pin to versions compatible with Home Assistant 2025.x
-aiohttp = ">=3.0.0"
-attrs = ">=20.3.0"
-propcache = ">=0.1.0"
-yarl = ">=1.6.0"
-cryptography = ">=41.0.1"
-protobuf = ">=3.20.0"
-backports-strenum = { version = "^1.2.4", python = "<3.11" }
-bleak = { version = ">=0.21", optional = true }
-dbus-fast = {version = ">=2.11.0", optional = true, platform = "linux"}
-gql = {version = ">=3.0.0,<4.0.0", extras = ["aiohttp"]}
-# Install websockets separately for HA compatibility
-# gql[websockets] extra requires websockets<12, but HA integrations need >=13
-# We install websockets separately and gql will use it for WebSocket subscriptions
-websockets = ">=13.0,<16.0"
+[project.optional-dependencies]
+ble = [
+    "bleak>=0.21",
+    "dbus-fast>=2.11.0 ; sys_platform == 'linux'",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = ">=7.1.2"
-pytest-asyncio = ">=0.18.3"
-python-dotenv = ">=0.20"
-aresponses = ">=2.1.5"
-mypy = ">=1.7.0"
-ruff = ">=0.4"
-pre-commit = "^4.1.0"
-grpcio-tools = "^1.76.0"
+[dependency-groups]
+dev = [
+    "pytest>=7.1.2",
+    "pytest-asyncio>=0.18.3",
+    "pytest-cov>=4.1.0",
+    "python-dotenv>=0.20",
+    "aresponses>=2.1.5",
+    "mypy>=1.7.0",
+    # Pinned to the .pre-commit-config.yaml rev so CI and the pre-commit hook
+    # apply the SAME rule set. Unpinned, uv resolved ruff 0.16.3, whose newer
+    # rules reported 48 "errors" in code that passes cleanly under the pinned
+    # version -- CI failing on a tool upgrade nobody made.
+    "ruff>=0.9.6,<0.10",
+    "pre-commit>=4.1.0",
+    "grpcio-tools>=1.76.0",
+]
 
-[tool.poetry.extras]
-ble = ["bleak", "dbus-fast"]
+[tool.hatch.build.targets.sdist]
+include = ["src/rivian"]
 
-[tool.poetry-dynamic-versioning]
-enable = true
-vcs = "git"
-style = "semver"
+[tool.hatch.build.targets.wheel]
+include = ["src/rivian"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/rivian" = "rivian"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
 pattern = "default-unprefixed"
+
+[tool.mypy]
+# protoc output is generated; its stubs are not ours to satisfy.
+exclude = ['.*_pb2\.pyi?$']
+
+[tool.ruff]
+# protoc output is generated, never hand-edited (scripts/regen_proto.sh), and
+# accounted for 251 of 349 lint findings. Linting it is meaningless.
+extend-exclude = ["*_pb2.py", "*_pb2.pyi"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
 split-on-trailing-comma = false
 
 [build-system]
-requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning"]
-build-backend = "poetry_dynamic_versioning.backend"
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"

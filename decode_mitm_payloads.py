@@ -8,6 +8,7 @@ payload_8hrs = "ClgKJAgBEiBG5Z+fjzUUWimeTc7I9XKXSkV8HuSqaqrVKnsSCgSluBIwMTctNDhj
 
 payload_2hrs = "ClgKJAgBEiD9mr2L2wfP1YkbWV+HqWxdhKdKIrCd0DTKTX7UqtGo8BIwMTctNDhjMDgwYzgtZjkwZi00NGQxLWIxOTQtZTNjZDJlMmY5YWFiLTVjMjk1NTkzEksKImNvbWZvcnQuY2FiaW4uY2xpbWF0ZV9ob2xkX3NldHRpbmcQARoQ12lxp4pkQ86zps15iFqSpiIDCKA4KgwI8puAyAYQqK2wmQI="
 
+
 def decode_varint(data: bytes, pos: int) -> tuple[int, int]:
     """Decode a protobuf varint from data at position pos."""
     result = 0
@@ -20,6 +21,7 @@ def decode_varint(data: bytes, pos: int) -> tuple[int, int]:
             break
         shift += 7
     return result, pos
+
 
 def parse_protobuf(data: bytes, indent: int = 0) -> None:
     """Parse and print protobuf wire format."""
@@ -39,12 +41,12 @@ def parse_protobuf(data: bytes, indent: int = 0) -> None:
             print(f"varint = {value}")
         elif wire_type == 2:  # Length-delimited
             length, pos = decode_varint(data, pos)
-            value = data[pos:pos + length]
+            value = data[pos : pos + length]
             pos += length
 
             # Try to parse as string
             try:
-                str_value = value.decode('utf-8')
+                str_value = value.decode("utf-8")
                 if str_value.isprintable():
                     print(f"string = '{str_value}'")
                 else:
@@ -64,6 +66,7 @@ def parse_protobuf(data: bytes, indent: int = 0) -> None:
         else:
             print("unknown wire type")
             break
+
 
 print("=" * 80)
 print("8 HOUR CLIMATE HOLD PAYLOAD")
@@ -97,6 +100,7 @@ print("Looking for duration fields...")
 print("\n480 minutes = 28800 seconds")
 print("2 hours = 120 minutes = 7200 seconds")
 
+
 # Find varint encoding
 def encode_varint(value: int) -> bytes:
     """Encode an integer as protobuf varint."""
@@ -106,6 +110,7 @@ def encode_varint(value: int) -> bytes:
         value >>= 7
     result.append(value & 0x7F)
     return bytes(result)
+
 
 print(f"\nVarint encoding of 28800 (480 min): {encode_varint(28800).hex()}")
 print(f"Varint encoding of 7200 (120 min): {encode_varint(7200).hex()}")

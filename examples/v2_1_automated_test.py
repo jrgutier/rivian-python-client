@@ -59,7 +59,9 @@ async def test_charging_management(client: Rivian, vehicle_id: str) -> dict[str,
         if success:
             num_schedules = len(schedules.get("schedules", []))
             smart_enabled = schedules.get("smartChargingEnabled", False)
-            print(f"  Found {num_schedules} schedule(s), Smart charging: {'enabled' if smart_enabled else 'disabled'}")
+            print(
+                f"  Found {num_schedules} schedule(s), Smart charging: {'enabled' if smart_enabled else 'disabled'}"
+            )
     except Exception as e:
         results["get_schedules"] = False
         print_result("Get charging schedules", False)
@@ -80,9 +82,7 @@ async def test_location_sharing(client: Rivian, vehicle_id: str) -> dict[str, bo
         longitude = -117.8265
         print(f"  Sending: {latitude}, {longitude} (Rivian HQ, Irvine CA)")
 
-        result = await client.share_location_to_vehicle(
-            vehicle_id, latitude, longitude
-        )
+        result = await client.share_location_to_vehicle(vehicle_id, latitude, longitude)
         success = result.get("publishResponse", {}).get("result") == 0
         results["share_gps"] = success
         print_result("Share GPS coordinates", success)
@@ -128,9 +128,11 @@ async def test_trailer_management(client: Rivian, vehicle_id: str) -> dict[str, 
 
             if num_trailers > 0:
                 for trailer in trailers:
-                    print(f"    - {trailer.get('name')}: "
-                          f"Length={trailer.get('length')}m, "
-                          f"Pinned={trailer.get('pinnedToGear')}")
+                    print(
+                        f"    - {trailer.get('name')}: "
+                        f"Length={trailer.get('length')}m, "
+                        f"Pinned={trailer.get('pinnedToGear')}"
+                    )
             else:
                 print("  (No trailers configured - R1S or no profiles created)")
         else:
@@ -163,9 +165,7 @@ async def test_trip_planning(client: Rivian, vehicle_id: str) -> dict[str, bool]
             "targetArrivalSOC": 20,
         }
 
-        trip = await client.plan_trip_with_multi_stop(
-            vehicle_id, waypoints, options
-        )
+        trip = await client.plan_trip_with_multi_stop(vehicle_id, waypoints, options)
         success = trip.get("tripId") is not None
         results["plan_trip"] = success
         print_result("Plan multi-stop trip", success)
@@ -177,7 +177,9 @@ async def test_trip_planning(client: Rivian, vehicle_id: str) -> dict[str, bool]
             charging_stops = len(trip.get("chargingStops", []))
 
             print(f"  Trip ID: {trip_id}")
-            print(f"  Distance: {distance:.1f} miles, Duration: {duration // 60}h {duration % 60}m")
+            print(
+                f"  Distance: {distance:.1f} miles, Duration: {duration // 60}h {duration % 60}m"
+            )
             print(f"  Charging stops: {charging_stops}")
 
             # Clean up - delete the test trip
@@ -233,9 +235,11 @@ async def test_gear_guard(client: Rivian, vehicle_id: str) -> dict[str, bool]:
         def on_config_update(config: dict[str, Any]) -> None:
             nonlocal received_update
             received_update = True
-            print(f"  📹 Received update: Enabled={config.get('enabled')}, "
-                  f"Mode={config.get('videoMode')}, "
-                  f"Storage={config.get('storageRemaining')}%")
+            print(
+                f"  📹 Received update: Enabled={config.get('enabled')}, "
+                f"Mode={config.get('videoMode')}, "
+                f"Storage={config.get('storageRemaining')}%"
+            )
 
         unsubscribe = await client.subscribe_for_gear_guard_config(
             vehicle_id, on_config_update
@@ -284,7 +288,15 @@ async def main() -> None:
 
     # Parse command line arguments
     category = sys.argv[1] if len(sys.argv) > 1 else "all"
-    valid_categories = ["charging", "location", "trailer", "trip", "key_mgmt", "gear_guard", "all"]
+    valid_categories = [
+        "charging",
+        "location",
+        "trailer",
+        "trip",
+        "key_mgmt",
+        "gear_guard",
+        "all",
+    ]
 
     if category not in valid_categories:
         print(f"❌ Invalid category: {category}")
@@ -306,13 +318,19 @@ async def main() -> None:
 
             # Run test suites based on category
             if category in ["charging", "all"]:
-                all_results["charging"] = await test_charging_management(client, vehicle_id)
+                all_results["charging"] = await test_charging_management(
+                    client, vehicle_id
+                )
 
             if category in ["location", "all"]:
-                all_results["location"] = await test_location_sharing(client, vehicle_id)
+                all_results["location"] = await test_location_sharing(
+                    client, vehicle_id
+                )
 
             if category in ["trailer", "all"]:
-                all_results["trailer"] = await test_trailer_management(client, vehicle_id)
+                all_results["trailer"] = await test_trailer_management(
+                    client, vehicle_id
+                )
 
             if category in ["trip", "all"]:
                 all_results["trip"] = await test_trip_planning(client, vehicle_id)
@@ -363,6 +381,7 @@ async def main() -> None:
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

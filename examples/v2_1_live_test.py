@@ -183,9 +183,11 @@ async def test_trailer_management(client: Rivian, vehicle_id: str) -> dict[str, 
 
             if num_trailers > 0:
                 for trailer in trailers:
-                    print(f"   - {trailer.get('name')}: "
-                          f"Length={trailer.get('length')}m, "
-                          f"Pinned={trailer.get('pinnedToGear')}")
+                    print(
+                        f"   - {trailer.get('name')}: "
+                        f"Length={trailer.get('length')}m, "
+                        f"Pinned={trailer.get('pinnedToGear')}"
+                    )
 
                 # Test 2: Update pin to gear
                 print("\n2. Update Pin to Gear")
@@ -196,7 +198,9 @@ async def test_trailer_management(client: Rivian, vehicle_id: str) -> dict[str, 
                         current_pinned = trailers[0].get("pinnedToGear", False)
                         new_pinned = not current_pinned
 
-                        print(f"   Changing pin status: {current_pinned} → {new_pinned}")
+                        print(
+                            f"   Changing pin status: {current_pinned} → {new_pinned}"
+                        )
                         success = await client.update_pin_to_gear(
                             vehicle_id, trailer_id, new_pinned
                         )
@@ -328,7 +332,10 @@ async def test_key_management(client: Rivian, vehicle_id: str) -> dict[str, bool
     choice = input("   Test CCC signing challenge? (y/n): ")
     if choice.lower() == "y":
         try:
-            device_id = input("   Enter device ID (or press Enter for 'test-device'): ") or "test-device"
+            device_id = (
+                input("   Enter device ID (or press Enter for 'test-device'): ")
+                or "test-device"
+            )
 
             challenge = await client.create_signing_challenge(vehicle_id, device_id)
             success = challenge.get("challengeId") is not None
@@ -357,7 +364,10 @@ async def test_key_management(client: Rivian, vehicle_id: str) -> dict[str, bool
     choice = input("   Test CCC enablement? (y/n): ")
     if choice.lower() == "y":
         try:
-            device_id = input("   Enter device ID (or press Enter for 'test-device'): ") or "test-device"
+            device_id = (
+                input("   Enter device ID (or press Enter for 'test-device'): ")
+                or "test-device"
+            )
 
             enabled = await client.enable_ccc(vehicle_id, device_id)
             results["enable_ccc"] = enabled
@@ -372,7 +382,10 @@ async def test_key_management(client: Rivian, vehicle_id: str) -> dict[str, bool
     choice = input("   Test WCC2 upgrade? (y/n): ")
     if choice.lower() == "y":
         try:
-            device_id = input("   Enter device ID (or press Enter for 'test-device'): ") or "test-device"
+            device_id = (
+                input("   Enter device ID (or press Enter for 'test-device'): ")
+                or "test-device"
+            )
 
             upgraded = await client.upgrade_key_to_wcc2(vehicle_id, device_id)
             results["upgrade_wcc2"] = upgraded
@@ -420,7 +433,9 @@ async def test_gear_guard(client: Rivian, vehicle_id: str) -> dict[str, bool]:
                 results["gear_guard_sub"] = received_update
                 print_result("Gear Guard subscription", received_update)
                 if not received_update:
-                    print("   Note: No updates received (may not be available on this vehicle)")
+                    print(
+                        "   Note: No updates received (may not be available on this vehicle)"
+                    )
             else:
                 results["gear_guard_sub"] = False
                 print_result("Gear Guard subscription", False)
@@ -492,13 +507,19 @@ async def main() -> None:
             test_choice = input("\nEnter choice (1-7): ")
 
             if test_choice in ["1", "7"]:
-                all_results["charging"] = await test_charging_management(client, vehicle_id)
+                all_results["charging"] = await test_charging_management(
+                    client, vehicle_id
+                )
 
             if test_choice in ["2", "7"]:
-                all_results["location"] = await test_location_sharing(client, vehicle_id)
+                all_results["location"] = await test_location_sharing(
+                    client, vehicle_id
+                )
 
             if test_choice in ["3", "7"]:
-                all_results["trailer"] = await test_trailer_management(client, vehicle_id)
+                all_results["trailer"] = await test_trailer_management(
+                    client, vehicle_id
+                )
 
             if test_choice in ["4", "7"]:
                 all_results["trip"] = await test_trip_planning(client, vehicle_id)
@@ -540,6 +561,7 @@ async def main() -> None:
     except Exception as e:
         print(f"\n❌ Unexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

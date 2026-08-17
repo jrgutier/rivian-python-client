@@ -21,10 +21,10 @@ USER_SESSION_TOKEN = os.getenv("RIVIAN_USER_SESSION_TOKEN")
 
 async def introspect_endpoint(client: Rivian, endpoint_name: str, endpoint_url: str):
     """Introspect a GraphQL endpoint to get its actual schema."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Introspecting: {endpoint_name}")
     print(f"URL: {endpoint_url}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     try:
         gql_client = await client._ensure_client(endpoint_url)
@@ -39,8 +39,17 @@ async def introspect_endpoint(client: Rivian, endpoint_name: str, endpoint_url: 
 
         # Look for operations related to our methods
         keywords = [
-            'referral', 'invitation', 'appointment', 'service', 'request',
-            'notification', 'token', 'chat', 'session', 'provision', 'user'
+            "referral",
+            "invitation",
+            "appointment",
+            "service",
+            "request",
+            "notification",
+            "token",
+            "chat",
+            "session",
+            "provision",
+            "user",
         ]
 
         matching_fields = []
@@ -51,7 +60,9 @@ async def introspect_endpoint(client: Rivian, endpoint_name: str, endpoint_url: 
         if matching_fields:
             print("\nRelevant Query Operations Found:")
             for field_name, field in sorted(matching_fields):
-                args = ", ".join([f"{arg}: {arg_type.type}" for arg, arg_type in field.args.items()])
+                args = ", ".join(
+                    [f"{arg}: {arg_type.type}" for arg, arg_type in field.args.items()]
+                )
                 print(f"  - {field_name}({args}): {field.type}")
         else:
             print("  No matching query fields found")
@@ -70,7 +81,12 @@ async def introspect_endpoint(client: Rivian, endpoint_name: str, endpoint_url: 
             if matching_mutations:
                 print("\nRelevant Mutation Operations Found:")
                 for field_name, field in sorted(matching_mutations):
-                    args = ", ".join([f"{arg}: {arg_type.type}" for arg, arg_type in field.args.items()])
+                    args = ", ".join(
+                        [
+                            f"{arg}: {arg_type.type}"
+                            for arg, arg_type in field.args.items()
+                        ]
+                    )
                     print(f"  - {field_name}({args}): {field.type}")
             else:
                 print("  No matching mutation fields found")
@@ -86,9 +102,9 @@ async def introspect_endpoint(client: Rivian, endpoint_name: str, endpoint_url: 
 
 async def main():
     """Introspect all Rivian GraphQL endpoints."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("RIVIAN API - GRAPHQL SCHEMA INTROSPECTION")
-    print("="*60)
+    print("=" * 60)
 
     # Initialize client with existing tokens
     client = Rivian()
@@ -111,9 +127,9 @@ async def main():
             results[name] = success
 
         # Summary
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("INTROSPECTION COMPLETE")
-        print("="*60)
+        print("=" * 60)
         for name, success in results.items():
             status = "✅ Success" if success else "❌ Failed"
             print(f"{name}: {status}")

@@ -49,7 +49,9 @@ def parse_protobuf(data: bytes, indent: int = 0) -> None:
             # Try to parse as string
             try:
                 str_value = value.decode("utf-8")
-                if str_value.isprintable() and all(c.isprintable() or c == "\n" for c in str_value):
+                if str_value.isprintable() and all(
+                    c.isprintable() or c == "\n" for c in str_value
+                ):
                     print(f'string = "{str_value}"')
                 else:
                     print(f"bytes (len={length}, hex={value.hex()})")
@@ -57,7 +59,7 @@ def parse_protobuf(data: bytes, indent: int = 0) -> None:
                         try:
                             print(f"{prefix}  Nested message:")
                             parse_protobuf(value, indent + 2)
-                        except:
+                        except Exception:
                             pass
             except UnicodeDecodeError:
                 print(f"bytes (len={length}, hex={value.hex()})")
@@ -65,7 +67,7 @@ def parse_protobuf(data: bytes, indent: int = 0) -> None:
                     try:
                         print(f"{prefix}  Nested message:")
                         parse_protobuf(value, indent + 2)
-                    except:
+                    except Exception:
                         pass
         else:
             print("unknown wire type")
@@ -124,7 +126,9 @@ for name, payload_b64 in payloads.items():
                     payload_len, op_pos = decode_varint(operation_data, op_pos)
                     halloween_payload = operation_data[op_pos : op_pos + payload_len]
 
-                    print(f"\nHalloween Settings Payload ({len(halloween_payload)} bytes):")
+                    print(
+                        f"\nHalloween Settings Payload ({len(halloween_payload)} bytes):"
+                    )
                     print(f"Hex: {halloween_payload.hex()}")
                     print("\nParsed structure:")
                     parse_protobuf(halloween_payload)
