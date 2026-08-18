@@ -30,6 +30,21 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# Close codes measured against wss://api.rivian.com, not taken from the spec.
+# 4401 arrives if anything is sent before connection_ack; 4403 ~0.5s after a
+# malformed u-sess. Both mean "do not retry, the credentials or the sequence are
+# wrong" -- retrying just loops.
+AUTH_CLOSE_CODES = frozenset({4401, 4403})
+# Sent to a perfectly healthy idle connection roughly every three minutes. This
+# is routine recycling, and treating it as fatal would drop the integration on a
+# timer.
+TTL_CLOSE_CODE = 4420
+
+
+def backoff_delay(attempt: int) -> float:
+    """Exponential backoff with jitter, capped at five minutes."""
+    return min(1 * 2**attempt + uniform(0, 1), 300)
+
 
 async def cancel_task(*tasks: asyncio.Task | None) -> None:
     """Cancel task(s)."""
@@ -146,9 +161,21 @@ class WebSocketMonitor:
             try:
                 msg = await websocket.receive(timeout=60)
                 if msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.CLOSED):
-                    self._log_message(msg)
-                    if msg.extra == "Unauthenticated":
+                    code = msg.data if isinstance(msg.data, int) else None
+                    if code in AUTH_CLOSE_CODES or msg.extra == "Unauthenticated":
+                        # Not transient. Reconnecting walks into the same
+                        # rejection, so stop and let the caller surface it.
+                        _LOGGER.error(
+                            "Web socket rejected by the server: %s (code %s). "
+                            "Not reconnecting.",
+                            msg.extra,
+                            code,
+                        )
                         self._disconnect = True
+                    elif code == TTL_CLOSE_CODE:
+                        _LOGGER.debug("Web socket recycled by the server (TTL)")
+                    else:
+                        self._log_message(msg)
                     break
                 self._last_received = datetime.now(timezone.utc)
                 if msg.type == WSMsgType.TEXT:
@@ -187,7 +214,21 @@ class WebSocketMonitor:
                 except Exception as ex:  # pylint: disable=broad-except # noqa: BLE001
                     self._log_message(ex, True)
                 if not self._ws or self._ws.closed:
-                    await asyncio.sleep(min(1 * 2**attempt + uniform(0, 1), 300))
+                    await asyncio.sleep(backoff_delay(attempt))
+                    attempt += 1
+                    continue
+                # A socket that OPENS is not yet a socket that WORKS: the server
+                # accepts the upgrade and only then rejects with 4401/4403. The
+                # old code reset the counter here, so such a rejection never
+                # reached the backoff and the monitor spun. Reset only once the
+                # server has acknowledged.
+                try:
+                    async with async_timeout.timeout(self._account.request_timeout):
+                        await self._connection_ack.wait()
+                except asyncio.TimeoutError:
+                    if self._disconnect:
+                        break
+                    await asyncio.sleep(backoff_delay(attempt))
                     attempt += 1
                     continue
                 attempt = 0
