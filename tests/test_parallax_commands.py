@@ -16,14 +16,13 @@ import pytest
 from aresponses import ResponsesMockServer
 
 from rivian import Rivian
-from rivian.exceptions import RivianBadRequestError, RivianUnauthenticated
+from rivian.exceptions import RivianUnauthenticated
 from rivian.parallax import (
     ParallaxCommand,
     RVMType,
-    build_charging_session_query,
     build_climate_status_query,
-    build_ota_status_query,
-    build_trip_progress_query,
+    build_ota_schedule_query,
+    build_vehicle_wheels_query,
 )
 from rivian.proto.base import SessionCost, TimeOfDay
 from rivian.proto.charging import ChargingScheduleTimeWindow, ChargingSessionLiveData
@@ -68,75 +67,24 @@ PARALLAX_ERROR_RESPONSE = {
 
 # Test RVMType enum
 class TestRVMType:
+    """RVMType carries only the RVMs the server actually accepts.
+
+    Rivian's app declares 18. Ten of the fourteen tested return
+    INTERNAL_SERVER_ERROR to sendVehicleOperation in BOTH directions
+    (docs/development/SENDVEHICLEOPERATION_TEST_RESULTS.md), so shipping them
+    invited entities that could never work. Pruned in s09a; re-add one only after
+    a live test shows the server accepts it.
+    """
+
+    def test_only_the_verified_rvms_ship(self) -> None:
+        assert {r.value for r in RVMType} == {
+            "comfort.cabin.climate_hold_setting",
+            "comfort.cabin.climate_hold_status",
+            "vehicle.wheels.vehicle_wheels",
+            "ota.user_schedule.ota_config",
+        }
+
     """Test RVMType enum."""
-
-    def test_rvm_type_count(self) -> None:
-        """Test that all 18 RVM types are defined."""
-        assert len(list(RVMType)) == 18
-
-    def test_rvm_type_values(self) -> None:
-        """Test specific RVM type values."""
-        # Energy & Charging (4 types)
-        assert (
-            RVMType.PARKED_ENERGY_MONITOR
-            == "energy_edge_compute.graphs.parked_energy_distributions"
-        )
-        assert (
-            RVMType.CHARGING_SESSION_CHART_DATA
-            == "energy_edge_compute.graphs.charging_graph_global"
-        )
-        assert (
-            RVMType.CHARGING_SESSION_LIVE_DATA
-            == "energy_edge_compute.graphs.charge_session_breakdown"
-        )
-        assert RVMType.CHARGING_SCHEDULE_TIME_WINDOW == "charging.schedule.time_window"
-
-        # Geofence (1 type)
-        assert (
-            RVMType.VEHICLE_GEO_FENCES == "geofence.geofence_service.favoriteGeofences"
-        )
-
-        # OTA Updates (2 types)
-        assert RVMType.OTA_SCHEDULE_CONFIGURATION == "ota.user_schedule.ota_config"
-        assert RVMType.OTA_STATE == "ota.ota_state.vehicle_ota_state"
-
-        # GearGuard (2 types)
-        assert (
-            RVMType.GEAR_GUARD_CONSENTS
-            == "gearguard_streaming.privacy.gearguard_streaming_in_vehicle_consent"
-        )
-        assert (
-            RVMType.GEAR_GUARD_DAILY_LIMITS
-            == "gearguard_streaming.privacy.gearguard_streaming_daily_limit"
-        )
-
-        # Vehicle (1 type)
-        assert RVMType.VEHICLE_WHEELS == "vehicle.wheels.vehicle_wheels"
-
-        # Navigation (2 types)
-        assert RVMType.TRIP_INFO == "navigation.navigation_service.trip_info"
-        assert RVMType.TRIP_PROGRESS == "navigation.navigation_service.trip_progress"
-
-        # Climate & Comfort (3 types)
-        assert RVMType.CLIMATE_HOLD_SETTING == "comfort.cabin.climate_hold_setting"
-        assert (
-            RVMType.CABIN_VENTILATION_SETTING
-            == "comfort.cabin.cabin_ventilation_setting"
-        )
-        assert RVMType.CLIMATE_HOLD_STATUS == "comfort.cabin.climate_hold_status"
-
-        # Vehicle Access (2 types)
-        assert (
-            RVMType.PASSIVE_ENTRY_SETTING
-            == "vehicle_access.passive_entry.passive_entry"
-        )
-        assert RVMType.PASSIVE_ENTRY_STATUS == "vehicle_access.state.passive_entry"
-
-        # Holiday Celebrations (1 type)
-        assert (
-            RVMType.HALLOWEEN_SETTINGS
-            == "holiday_celebration.mobile_vehicle_settings.halloween_celebration_settings"
-        )
 
     def test_rvm_type_is_string(self) -> None:
         """Test that RVM types are strings."""
@@ -161,23 +109,23 @@ class TestParallaxCommand:
 
     def test_command_creation_with_empty_payload(self) -> None:
         """Test creating a command with an empty payload."""
-        cmd = ParallaxCommand(RVMType.CHARGING_SESSION_LIVE_DATA, b"")
+        cmd = ParallaxCommand(RVMType.CLIMATE_HOLD_STATUS, b"")
 
-        assert cmd.rvm == RVMType.CHARGING_SESSION_LIVE_DATA
+        assert cmd.rvm == RVMType.CLIMATE_HOLD_STATUS
         assert cmd.payload_b64 == ""
         assert cmd.command_id is not None
 
     def test_command_creation_with_custom_id(self) -> None:
         """Test creating a command with a custom command ID."""
         custom_id = "custom-test-id-123"
-        cmd = ParallaxCommand(RVMType.OTA_STATE, b"test", custom_id)
+        cmd = ParallaxCommand(RVMType.OTA_SCHEDULE_CONFIGURATION, b"test", custom_id)
 
         assert cmd.command_id == custom_id
 
     def test_command_name_property(self) -> None:
         """Test command name property."""
-        cmd = ParallaxCommand(RVMType.TRIP_PROGRESS, b"")
-        assert cmd.name == "parallax_navigation.navigation_service.trip_progress"
+        cmd = ParallaxCommand(RVMType.VEHICLE_WHEELS, b"")
+        assert cmd.name == "parallax_vehicle.wheels.vehicle_wheels"
 
     def test_base64_encoding(self) -> None:
         """Test Base64 encoding of payload."""
@@ -222,7 +170,7 @@ class TestParallaxCommand:
         time = TimeOfDay(hour=10, minute=30)
         custom_id = "test-custom-id-456"
         cmd = ParallaxCommand.from_protobuf(
-            RVMType.CHARGING_SCHEDULE_TIME_WINDOW, time, custom_id
+            RVMType.CLIMATE_HOLD_SETTING, time, custom_id
         )
 
         assert cmd.command_id == custom_id
@@ -232,14 +180,6 @@ class TestParallaxCommand:
 # Test helper functions
 class TestHelperFunctions:
     """Test helper functions for building commands."""
-
-    def test_build_charging_session_query(self) -> None:
-        """Test building charging session query."""
-        cmd = build_charging_session_query()
-
-        assert cmd.rvm == RVMType.CHARGING_SESSION_LIVE_DATA
-        assert cmd.payload_b64 == ""  # Read operations use empty payload
-        assert cmd.command_id is not None
 
     def test_build_climate_status_query(self) -> None:
         """Test building climate status query."""
@@ -286,61 +226,6 @@ class TestHelperFunctions:
         # The payload might be empty or minimal depending on implementation
         decoded = base64.b64decode(cmd.payload_b64) if cmd.payload_b64 else b""
         assert isinstance(decoded, bytes)
-
-    def test_build_charging_schedule_command(self) -> None:
-        """Test building charging schedule command.
-
-        Validates that build_charging_schedule_command() creates a properly
-        formatted command with serialized ChargingScheduleTimeWindow payload.
-        """
-        from rivian.parallax import build_charging_schedule_command
-
-        # Charge between 10 PM (22:00) and 6 AM (06:00)
-        cmd = build_charging_schedule_command(22, 0, 6, 0)
-
-        assert cmd.rvm == RVMType.CHARGING_SCHEDULE_TIME_WINDOW
-        assert cmd.command_id is not None
-        assert cmd.payload_b64 != ""  # Write operations have payload
-
-        # Verify payload is valid base64
-        decoded = base64.b64decode(cmd.payload_b64)
-        assert isinstance(decoded, bytes)
-        assert len(decoded) > 0
-
-    def test_build_charging_schedule_command_with_days(self) -> None:
-        """Test building charging schedule command with specific days.
-
-        Validates that charging schedules can be configured for specific
-        days of the week (e.g., weekdays only).
-        """
-        from rivian.parallax import build_charging_schedule_command
-
-        # Charge 10:30 AM - 2:45 PM, Monday-Friday only
-        cmd = build_charging_schedule_command(10, 30, 14, 45, start_day=1, end_day=5)
-
-        assert cmd.rvm == RVMType.CHARGING_SCHEDULE_TIME_WINDOW
-        assert cmd.command_id is not None
-        assert cmd.payload_b64 != ""
-
-        decoded = base64.b64decode(cmd.payload_b64)
-        assert isinstance(decoded, bytes)
-        assert len(decoded) > 0
-
-    def test_build_ota_status_query(self) -> None:
-        """Test building OTA status query."""
-        cmd = build_ota_status_query()
-
-        assert cmd.rvm == RVMType.OTA_STATE
-        assert cmd.payload_b64 == ""  # Read operations use empty payload
-        assert cmd.command_id is not None
-
-    def test_build_trip_progress_query(self) -> None:
-        """Test building trip progress query."""
-        cmd = build_trip_progress_query()
-
-        assert cmd.rvm == RVMType.TRIP_PROGRESS
-        assert cmd.payload_b64 == ""  # Read operations use empty payload
-        assert cmd.command_id is not None
 
 
 # Test protobuf messages
@@ -776,7 +661,7 @@ class TestRivianClassMethods:
                 app_session_token="token",
                 user_session_token="token",
             )
-            cmd = build_charging_session_query()
+            cmd = build_climate_status_query()
             result = await rivian.send_parallax_command("VIN123", cmd, TEST_PHONE_ID)
 
             # sendVehicleOperation returns only success flag
@@ -824,189 +709,10 @@ class TestRivianClassMethods:
                 app_session_token="token",
                 user_session_token="token",
             )
-            cmd = build_ota_status_query()
+            cmd = build_ota_schedule_query()
 
             with pytest.raises(RivianUnauthenticated):
                 await rivian.send_parallax_command("VIN123", cmd, TEST_PHONE_ID)
-
-            await rivian.close()
-
-    async def test_set_charging_schedule_valid(
-        self, aresponses: ResponsesMockServer
-    ) -> None:
-        """Test setting charging schedule with valid parameters.
-
-        Validates that the Rivian client can send a charging schedule command
-        with serialized ChargingScheduleTimeWindow protobuf payload.
-        """
-        aresponses.add(
-            "rivian.com",
-            "/api/gql/gateway/graphql",
-            "POST",
-            response=PARALLAX_SUCCESS_RESPONSE,
-        )
-
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-            result = await rivian.set_charging_schedule(
-                "VIN123", TEST_PHONE_ID, 22, 0, 6, 0
-            )
-
-            assert result["success"] is True
-            await rivian.close()
-
-    async def test_set_charging_schedule_with_days(
-        self, aresponses: ResponsesMockServer
-    ) -> None:
-        """Test setting charging schedule with specific days.
-
-        Validates that charging schedules can be configured for specific
-        days of the week (e.g., weekdays only).
-        """
-        aresponses.add(
-            "rivian.com",
-            "/api/gql/gateway/graphql",
-            "POST",
-            response=PARALLAX_SUCCESS_RESPONSE,
-        )
-
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-            result = await rivian.set_charging_schedule(
-                "VIN123", TEST_PHONE_ID, 10, 30, 14, 45, start_day=1, end_day=5
-            )
-
-            assert result["success"] is True
-            await rivian.close()
-
-    async def test_set_charging_schedule_invalid_hours(self) -> None:
-        """Test setting charging schedule with invalid hours."""
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-
-            # Test start hour too high
-            with pytest.raises(
-                RivianBadRequestError, match="Hours must be between 0 and 23"
-            ):
-                await rivian.set_charging_schedule("VIN123", TEST_PHONE_ID, 24, 0, 6, 0)
-
-            # Test end hour negative
-            with pytest.raises(
-                RivianBadRequestError, match="Hours must be between 0 and 23"
-            ):
-                await rivian.set_charging_schedule(
-                    "VIN123", TEST_PHONE_ID, 10, 0, -1, 0
-                )
-
-            await rivian.close()
-
-    async def test_set_charging_schedule_invalid_minutes(self) -> None:
-        """Test setting charging schedule with invalid minutes."""
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-
-            # Test start minute too high
-            with pytest.raises(
-                RivianBadRequestError, match="Minutes must be between 0 and 59"
-            ):
-                await rivian.set_charging_schedule(
-                    "VIN123", TEST_PHONE_ID, 10, 60, 14, 0
-                )
-
-            # Test end minute negative
-            with pytest.raises(
-                RivianBadRequestError, match="Minutes must be between 0 and 59"
-            ):
-                await rivian.set_charging_schedule(
-                    "VIN123", TEST_PHONE_ID, 10, 0, 14, -1
-                )
-
-            await rivian.close()
-
-    async def test_set_charging_schedule_invalid_days(self) -> None:
-        """Test setting charging schedule with invalid days."""
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-
-            # Test start day too high
-            with pytest.raises(
-                RivianBadRequestError,
-                match="Days must be between 0 \\(Sunday\\) and 6 \\(Saturday\\)",
-            ):
-                await rivian.set_charging_schedule(
-                    "VIN123", TEST_PHONE_ID, 10, 0, 14, 0, start_day=7, end_day=6
-                )
-
-            # Test end day negative
-            with pytest.raises(
-                RivianBadRequestError,
-                match="Days must be between 0 \\(Sunday\\) and 6 \\(Saturday\\)",
-            ):
-                await rivian.set_charging_schedule(
-                    "VIN123", TEST_PHONE_ID, 10, 0, 14, 0, start_day=0, end_day=-1
-                )
-
-            await rivian.close()
-
-    async def test_set_charging_schedule_boundary_values(
-        self, aresponses: ResponsesMockServer
-    ) -> None:
-        """Test setting charging schedule with boundary values.
-
-        Validates that boundary values for hours, minutes, and days are accepted.
-        """
-        # Add two responses for two API calls
-        aresponses.add(
-            "rivian.com",
-            "/api/gql/gateway/graphql",
-            "POST",
-            response=PARALLAX_SUCCESS_RESPONSE,
-        )
-        aresponses.add(
-            "rivian.com",
-            "/api/gql/gateway/graphql",
-            "POST",
-            response=PARALLAX_SUCCESS_RESPONSE,
-        )
-
-        async with aiohttp.ClientSession():
-            rivian = Rivian(
-                csrf_token="token",
-                app_session_token="token",
-                user_session_token="token",
-            )
-
-            # Test minimum boundary values
-            result_min = await rivian.set_charging_schedule(
-                "VIN123", TEST_PHONE_ID, 0, 0, 0, 0, start_day=0, end_day=0
-            )
-            assert result_min["success"] is True
-
-            # Test maximum boundary values
-            result_max = await rivian.set_charging_schedule(
-                "VIN123", TEST_PHONE_ID, 23, 59, 23, 59, start_day=6, end_day=6
-            )
-            assert result_max["success"] is True
 
             await rivian.close()
 
@@ -1060,7 +766,7 @@ class TestRivianClassMethods:
                 app_session_token="token",
                 user_session_token="token",
             )
-            cmd = build_trip_progress_query()
+            cmd = build_vehicle_wheels_query()
 
             # Verify command has empty payload for read operation
             assert cmd.payload_b64 == ""
@@ -1073,8 +779,8 @@ class TestRivianClassMethods:
     # test_get_climate_hold_status, test_get_ota_status and test_get_trip_progress covered
     # gql-era convenience getters that no caller in the Home Assistant integration ever
     # reached, so the methods were dropped rather than ported. The builders behind them
-    # (build_charging_session_query, build_climate_status_query, build_ota_status_query,
-    # build_trip_progress_query) survive and are still covered above. Reads of those RVMs
+    # (build_climate_status_query, build_vehicle_wheels_query, build_ota_schedule_query)
+    # survive and are still covered above. Reads of those RVMs
     # come from the Parallax subscription decoder, not from per-RVM getters.
 
     async def test_set_climate_hold_sends_duration(
