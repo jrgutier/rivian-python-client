@@ -605,6 +605,162 @@ def decode_tires(payload: str) -> dict[str, Any]:
 
 
 # Map of RVM topic -> decoder function
+# --- Decoders for the RVMs this fork ships -----------------------------------
+#
+# Upstream's table covers 14 telemetry topics and none of these, so
+# decode_parallax_message returned None for every one of them -- the entities
+# would have read as unavailable forever. Layouts come from the .proto files
+# reverse-engineered from com.rivian.android.consumer, and each decoder is
+# asserted against a payload captured from a real vehicle
+# (tests/fixtures/parallax/, see docs/development/RVM_FIXTURES.md in the
+# integration repo).
+#
+# Written hand-rolled like the rest of this module rather than with the generated
+# _pb2 classes, so they survive the removal of the protobuf dependency.
+
+_CLIMATE_HOLD_STATUS = {
+    0: "unspecified",
+    1: "unavailable",
+    2: "off",
+    3: "on",
+    4: "fault",
+}
+_CLIMATE_HOLD_AVAILABILITY = {
+    0: "unspecified",
+    1: "available",
+    2: "controllable",
+    3: "unavailable",
+}
+_CLIMATE_HOLD_UNAVAILABILITY_REASON = {
+    0: "unspecified",
+    1: "unknown",
+    2: "low_soc",
+}
+
+
+def decode_climate_hold_status(payload: str) -> dict[str, Any]:
+    """Decode comfort.cabin.climate_hold_status.
+
+    Returns dict with keys:
+        - climateHoldStatus: str  (off | on | unavailable | fault | unspecified)
+        - climateHoldAvailability: str
+        - climateHoldUnavailabilityReason: str (only when not "unspecified")
+        - climateHoldEndTime: int (epoch seconds, only when a hold is running)
+    """
+    if not payload:
+        return {}
+    try:
+        result: dict[str, Any] = {}
+        for field_num, wire_type, value in _decode_protobuf_fields(
+            base64.b64decode(payload)
+        ):
+            if field_num == 1 and wire_type == 0:
+                result["climateHoldStatus"] = _CLIMATE_HOLD_STATUS.get(
+                    value, "unspecified"
+                )
+            elif field_num == 2 and wire_type == 0:
+                result["climateHoldAvailability"] = _CLIMATE_HOLD_AVAILABILITY.get(
+                    value, "unspecified"
+                )
+            elif field_num == 3 and wire_type == 0:
+                reason = _CLIMATE_HOLD_UNAVAILABILITY_REASON.get(value, "unspecified")
+                if reason != "unspecified":
+                    result["climateHoldUnavailabilityReason"] = reason
+            elif field_num == 4 and wire_type == 2:
+                # google.protobuf.Timestamp; an empty message means "no hold"
+                for ts_num, ts_wt, ts_val in _decode_protobuf_fields(value):
+                    if ts_num == 1 and ts_wt == 0:
+                        result["climateHoldEndTime"] = ts_val
+        return result
+    except Exception:  # pylint: disable=broad-except
+        _LOGGER.debug("Failed to decode climate_hold_status", exc_info=True)
+        return {}
+
+
+def decode_climate_hold_setting(payload: str) -> dict[str, Any]:
+    """Decode comfort.cabin.climate_hold_setting.
+
+    Returns dict with keys:
+        - climateHoldDurationSeconds: int  (0 or absent when no hold is set)
+
+    An EMPTY payload is the vehicle's way of saying "no hold configured"; it is
+    reported as 0 rather than {} so the entity reads as off rather than
+    unavailable.
+    """
+    if not payload:
+        return {"climateHoldDurationSeconds": 0}
+    try:
+        result: dict[str, Any] = {"climateHoldDurationSeconds": 0}
+        for field_num, wire_type, value in _decode_protobuf_fields(
+            base64.b64decode(payload)
+        ):
+            if field_num == 1 and wire_type == 0:
+                result["climateHoldDurationSeconds"] = value
+        return result
+    except Exception:  # pylint: disable=broad-except
+        _LOGGER.debug("Failed to decode climate_hold_setting", exc_info=True)
+        return {}
+
+
+def decode_vehicle_wheels(payload: str) -> dict[str, Any]:
+    """Decode vehicle.wheels.vehicle_wheels.
+
+    Returns dict with keys:
+        - wheels: list[dict] -- one entry per wheel, each with wheelPackage,
+          tireOdometerMeters, odometerAtLastRotationMeters,
+          rotationReminderIntervalMeters, isInstalled, tires
+        - wheelsInstalled: int -- how many report is_installed
+    """
+    if not payload:
+        return {}
+    try:
+        wheels: list[dict[str, Any]] = []
+        for field_num, wire_type, value in _decode_protobuf_fields(
+            base64.b64decode(payload)
+        ):
+            if field_num != 1 or wire_type != 2:
+                continue
+            # proto3 omits fields at their default, so seed the defaults rather
+            # than emitting a ragged dict -- consumers would otherwise have to
+            # distinguish "absent" from "zero", and the two mean the same here.
+            wheel: dict[str, Any] = {
+                "wheelPackage": 0,
+                "tireOdometerMeters": 0,
+                "odometerAtLastRotationMeters": 0,
+                "rotationReminderIntervalMeters": 0,
+                "isInstalled": False,
+                "tires": 0,
+                "currentOdometerMeters": 0,
+            }
+            for num, wt, val in _decode_protobuf_fields(value):
+                if wt != 0:
+                    continue
+                if num == 1:
+                    wheel["wheelPackage"] = val
+                elif num == 2:
+                    wheel["tireOdometerMeters"] = val
+                elif num == 4:
+                    wheel["odometerAtLastRotationMeters"] = val
+                elif num == 6:
+                    wheel["rotationReminderIntervalMeters"] = val
+                elif num == 7:
+                    wheel["isInstalled"] = bool(val)
+                elif num == 9:
+                    wheel["tires"] = val
+                elif num == 10:
+                    wheel["currentOdometerMeters"] = val
+            wheels.append(wheel)
+        if not wheels:
+            return {}
+        return {
+            "wheels": wheels,
+            "wheelsInstalled": sum(1 for w in wheels if w.get("isInstalled")),
+        }
+    except Exception:  # pylint: disable=broad-except
+        _LOGGER.debug("Failed to decode vehicle_wheels", exc_info=True)
+        return {}
+
+
 RVM_DECODERS: dict[str, Callable[[str], dict[str, Any]]] = {
     "body.closures.states": decode_closures,
     "body.locks.states": decode_locks,
@@ -620,6 +776,10 @@ RVM_DECODERS: dict[str, Callable[[str], dict[str, Any]]] = {
     "energy_edge_compute.graphs.charge_session_breakdown": decode_charge_session_breakdown,
     "energy_edge_compute.graphs.charging_graph_global": decode_charging_graph_global,
     "vehicle.power.state": decode_power_state,
+    # This fork's RVMs, captured and verified against a real vehicle.
+    "comfort.cabin.climate_hold_setting": decode_climate_hold_setting,
+    "comfort.cabin.climate_hold_status": decode_climate_hold_status,
+    "vehicle.wheels.vehicle_wheels": decode_vehicle_wheels,
 }
 
 # Full list of Parallax RVMs subscribed for vehicle & charging telemetry
