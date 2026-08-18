@@ -17,14 +17,19 @@ license = "MIT"
 #
 # protobuf is the one addition, and it is temporary. Our Parallax *write* path --
 # the half upstream does not have -- still builds payloads from generated *_pb2
-# modules. The bound is load-bearing, not caution: unbounded, uv resolves
-# protobuf 7.x, while the checked-in gencode is 6.31.1 and calls
-# ValidateProtobufRuntimeVersion, so every module fails at import. HA pins 6.32.0.
+# modules.
+#
+# The UPPER bound is load-bearing in both directions, and the ceiling is now
+# 6.33, not 7. Generated code calls ValidateProtobufRuntimeVersion, which refuses
+# to load when the gencode is NEWER than the runtime. Home Assistant pins
+# protobuf==6.32.0, so a dev environment resolving 6.33.x bakes gencode 6.33 into
+# the committed *_pb2 files and the vendored client then fails to import inside
+# HA -- which is exactly what happened and is what this ceiling prevents.
 # Removed entirely when the hand-rolled encoder replaces *_pb2.
 dependencies = [
     "aiohttp (>=3.0.0)",
     "cryptography (>=41.0.1)",
-    "protobuf (>=3.20.0,<7)",
+    "protobuf (>=3.20.0,<6.33)",
     "backports-strenum (>=1.2.4) ; python_version < '3.11'",
     "typing_extensions (>=4.14.1) ; python_version < '3.11'",
     # Imported by rivian.py and ws_monitor.py on Python 3.10, where

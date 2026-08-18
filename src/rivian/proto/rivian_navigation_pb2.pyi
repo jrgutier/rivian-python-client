@@ -56,7 +56,7 @@ class TripPreferences(_message.Message):
     avoid_ferries: bool
     fastest_route: bool
     most_efficient: bool
-    def __init__(self, avoid_highways: _Optional[bool] = ..., avoid_tolls: _Optional[bool] = ..., avoid_ferries: _Optional[bool] = ..., fastest_route: _Optional[bool] = ..., most_efficient: _Optional[bool] = ...) -> None: ...
+    def __init__(self, avoid_highways: bool = ..., avoid_tolls: bool = ..., avoid_ferries: bool = ..., fastest_route: bool = ..., most_efficient: bool = ...) -> None: ...
 
 class FasterRouteInfo(_message.Message):
     __slots__ = ("time_savings_seconds", "distance_difference_meters", "route")
