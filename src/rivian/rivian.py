@@ -835,15 +835,14 @@ class Rivian:
             RivianUnauthenticated: If authentication is invalid
 
         Example:
-            >>> from rivian.proto.rivian_climate_pb2 import ClimateHoldSetting
-            >>> # Get phone_id from enrollment
+            >>> from rivian.parallax import encode_climate_hold_setting
+            >>> # Get phone_id from enrollment -- 16 RAW BYTES, not the string
             >>> user_info = await client.get_user_information(include_phones=True)
             >>> phone_id_str = user_info["enrolledPhones"][0]["vas"]["vasPhoneId"]
             >>> import uuid
             >>> phone_id = uuid.UUID(phone_id_str).bytes
-            >>> # Build payload
-            >>> setting = ClimateHoldSetting(hold_time_duration_seconds=7200)  # 2 hours
-            >>> payload = setting.SerializeToString()
+            >>> # Build payload (2 hours -> 08a038)
+            >>> payload = encode_climate_hold_setting(7200)
             >>> # Send operation
             >>> result = await client.send_vehicle_operation(
             ...     vehicle_id="01-276948064",

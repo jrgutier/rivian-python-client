@@ -1753,7 +1753,6 @@ dependencies = [
     { name = "async-timeout", marker = "python_full_version < '3.11'" },
     { name = "backports-strenum", marker = "python_full_version < '3.11'" },
     { name = "cryptography" },
-    { name = "protobuf" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 
@@ -1784,7 +1783,6 @@ requires-dist = [
     { name = "bleak", marker = "extra == 'ble'", specifier = ">=0.21" },
     { name = "cryptography", specifier = ">=41.0.1" },
     { name = "dbus-fast", marker = "sys_platform == 'linux' and extra == 'ble'", specifier = ">=2.11.0" },
-    { name = "protobuf", specifier = ">=3.20.0,<6.33" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.14.1" },
 ]
 provides-extras = ["ble"]
