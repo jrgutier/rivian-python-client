@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from aiohttp import ClientWebSocketResponse, WSMessage, WSMsgType
-from aiohttp.http_websocket import WSMessageTextBytes
 
 if sys.version_info >= (3, 11):
     import asyncio as async_timeout
@@ -22,6 +21,11 @@ else:
     import async_timeout
 
 if TYPE_CHECKING:
+    # Annotation-only. Imported at runtime by upstream 2.1.0, but Home
+    # Assistant pins aiohttp==3.12.15, which has no WSMessageTextBytes --
+    # so the runtime import made the whole client unimportable under HA.
+    from aiohttp.http_websocket import WSMessageTextBytes
+
     from .rivian import Rivian
 
 _LOGGER = logging.getLogger(__name__)
